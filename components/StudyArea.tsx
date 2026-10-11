@@ -1,0 +1,320 @@
+
+import React, { useState } from 'react';
+import { GoogleGenAI, Modality } from "@google/genai";
+import { StoryResponse, Sentence } from '../types';
+import { Volume2, ChevronDown, ChevronUp, CheckCircle2, Loader2, Sparkles, Languages, Music, PlayCircle, Info, Download, RefreshCw, Book } from 'lucide-react';
+
+interface StudyAreaProps {
+  story: StoryResponse | null;
+  loading: boolean;
+  onGenerate: () => void;
+  onComplete: (story: StoryResponse) => void;
+  targetLanguage: string;
+  t: any;
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, data.byteLength / 2);
+  const buffer = ctx.createBuffer(1, dataInt16.length, sampleRate);
+  const channelData = buffer.getChannelData(0);
+  for (let i = 0; i < dataInt16.length; i++) {
+    channelData[i] = dataInt16[i] / 32768.0;
+  }
+  return buffer;
+}
+
+function createWavBlob(pcmData: Int16Array, sampleRate: number): Blob {
+  const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 32 + pcmData.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, pcmData.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < pcmData.length; i++, offset += 2) {
+    view.setInt16(offset, pcmData[i], true);
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+const getFullStoryAudioData = async (story: StoryResponse, targetLanguage: string) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const fullText = story.sentences.map(s => s.original).join(" ");
+  
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-preview-tts",
+    contents: [{ parts: [{ text: `Read the following story naturally in ${targetLanguage}: ${fullText}` }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+      },
+    },
+  });
+
+  const base64Data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+  if (!base64Data) throw new Error("No audio data returned");
+  return base64Data;
+};
+
+export const playFullStoryAudio = async (story: StoryResponse, targetLanguage: string) => {
+  const base64Data = await getFullStoryAudioData(story, targetLanguage);
+  const audioBytes = decodeBase64(base64Data);
+  const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+  const audioCtx = new AudioContextClass({ sampleRate: 24000 });
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  const buffer = await decodeAudioData(audioBytes, audioCtx, 24000);
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioCtx.destination);
+  source.start();
+};
+
+export const downloadFullStoryAudio = async (story: StoryResponse, targetLanguage: string) => {
+  const base64Data = await getFullStoryAudioData(story, targetLanguage);
+  const audioBytes = decodeBase64(base64Data);
+  const pcmData = new Int16Array(audioBytes.buffer, audioBytes.byteOffset, audioBytes.byteLength / 2);
+  const blob = createWavBlob(pcmData, 24000);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${story.story_title.replace(/\s+/g, '_')}_full_audio.wav`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+const SentenceCard: React.FC<{ sentence: Sentence; targetLanguage: string; t_app: any; isReview: boolean }> = ({ sentence, targetLanguage, t_app, isReview }) => {
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+
+  const speak = async () => {
+    if (isProcessingAudio) return;
+    setIsProcessingAudio(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Read the following sentence out loud in ${targetLanguage}: ${sentence.original}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+          },
+        },
+      });
+      const base64Data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+      if (!base64Data) throw new Error("No audio data");
+      const audioBytes = decodeBase64(base64Data);
+      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+      const audioCtx = new AudioContextClass({ sampleRate: 24000 });
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      const buffer = await decodeAudioData(audioBytes, audioCtx, 24000);
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioCtx.destination);
+      source.start();
+    } catch (err: any) {
+      alert(`Audio Error: ${err.message}`);
+    } finally {
+      setIsProcessingAudio(false);
+    }
+  };
+
+  const renderHighlightedSentence = () => {
+    if (!sentence.new_element || isReview) return sentence.original;
+    const parts = sentence.original.split(new RegExp(`(${sentence.new_element})`, 'gi'));
+    return parts.map((part, index) => {
+      if (part.toLowerCase() === sentence.new_element.toLowerCase()) {
+        return (
+          <span key={index} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-md border-b-2 border-indigo-400 dark:border-indigo-600 font-semibold">
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden transition-all hover:shadow-md">
+      <div className="p-6">
+        <div className="flex justify-between items-start gap-4 mb-4">
+          <h4 className="text-xl md:text-2xl font-medium text-slate-800 dark:text-slate-100 leading-relaxed">
+            {renderHighlightedSentence()}
+          </h4>
+          <button onClick={speak} disabled={isProcessingAudio} className="p-2 text-slate-400 hover:text-indigo-600 rounded-full transition-all disabled:opacity-50">
+            {isProcessingAudio ? <Loader2 className="animate-spin" size={22} /> : <Volume2 size={22} />}
+          </button>
+        </div>
+        
+        <div className="flex flex-col gap-3">
+          <button onClick={() => setShowTranslation(!showTranslation)} className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 w-fit">
+            {showTranslation ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {showTranslation ? "Hide Translation" : "Show Translation"}
+          </button>
+          
+          {showTranslation && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
+              <p className="text-slate-600 dark:text-slate-300 italic p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-indigo-200 dark:border-indigo-800">
+                {sentence.translation}
+              </p>
+              
+              <div className="grid grid-cols-1 gap-3">
+                {!isReview && sentence.definition_target && (
+                  <div className="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+                    <p className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Book size={12} /> Definition ({targetLanguage})</p>
+                    <p className="text-md font-medium text-indigo-900 dark:text-indigo-200 leading-relaxed">"{sentence.definition_target}"</p>
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {!isReview && sentence.new_element && (
+                    <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                      <p className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-widest mb-1 flex items-center gap-1"><Sparkles size={12} /> The "+1" Element</p>
+                      <p className="text-sm text-amber-900 dark:text-amber-200 leading-relaxed font-semibold">{sentence.new_element}: <span className="font-normal">{sentence.explanation}</span></p>
+                    </div>
+                  )}
+                  {sentence.phonetic && (
+                    <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                      <p className="text-xs font-bold text-blue-700 dark:text-blue-500 uppercase tracking-widest mb-1 flex items-center gap-1"><Info size={12} /> Pronunciation (IPA)</p>
+                      <p className="text-lg font-mono text-blue-900 dark:text-blue-200">/{sentence.phonetic}/</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onComplete, targetLanguage, t }) => {
+  const [isPlayingCurrent, setIsPlayingCurrent] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handlePlayFull = async () => {
+    if (!story || isPlayingCurrent) return;
+    setIsPlayingCurrent(true);
+    try {
+      await playFullStoryAudio(story, targetLanguage);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setIsPlayingCurrent(false);
+    }
+  };
+
+  const handleDownloadFull = async () => {
+    if (!story || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadFullStoryAudio(story, targetLanguage);
+    } catch (err: any) {
+      alert(`Download Error: ${err.message}`);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-500">
+        <div className="relative">
+          <div className="w-16 h-16 border-4 border-indigo-100 dark:border-indigo-900 rounded-full"></div>
+          <div className="w-16 h-16 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin absolute top-0"></div>
+        </div>
+        <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Crafting your custom content...</p>
+      </div>
+    );
+  }
+
+  if (!story) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-indigo-100 dark:bg-indigo-900/30 p-6 rounded-3xl text-indigo-600 dark:text-indigo-400"><Languages size={48} /></div>
+        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">No Active Lesson</h3>
+        <button onClick={onGenerate} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-4 px-10 rounded-2xl shadow-xl flex items-center gap-2"><Sparkles size={20} /> Generate My Story</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+        <div>
+          <div className="flex gap-2">
+            <span className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">{story.level_target || 'Advanced'} Level</span>
+            {story.is_review && (
+              <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1"><RefreshCw size={10} /> Review Mode</span>
+            )}
+          </div>
+          <h2 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">{story.story_title}</h2>
+        </div>
+      </header>
+
+      <div className="space-y-6">
+        {story.sentences.map((sentence) => (
+          <SentenceCard key={sentence.id} sentence={sentence} targetLanguage={targetLanguage} t_app={t} isReview={!!story.is_review} />
+        ))}
+      </div>
+
+      <div className="pt-10 border-t border-slate-200 dark:border-slate-800 text-center">
+        <div className="bg-indigo-50 dark:bg-slate-900 p-8 rounded-3xl space-y-6 border border-indigo-100 dark:border-slate-800">
+          <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-400">{story.is_review ? "Session Review" : "Lesson Review"}</h3>
+          
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button onClick={handlePlayFull} disabled={isPlayingCurrent} className="flex items-center gap-2 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-100 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50">
+              {isPlayingCurrent ? <Loader2 size={20} className="animate-spin" /> : <PlayCircle size={20} />} Ouvir História Completa
+            </button>
+            <button onClick={handleDownloadFull} disabled={isDownloading} className="flex items-center gap-2 bg-indigo-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-200 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50">
+              {isDownloading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />} Baixar Áudio (.wav)
+            </button>
+          </div>
+
+          {!story.is_review && story.new_words_to_add.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {story.new_words_to_add.map((word, i) => (<span key={i} className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700">+ {word}</span>))}
+            </div>
+          )}
+          
+          <button onClick={() => onComplete(story)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-12 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 w-full md:w-auto mx-auto">
+            <CheckCircle2 size={24} /> {story.is_review ? "Review Completed" : "Lesson Completed"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default StudyArea;
