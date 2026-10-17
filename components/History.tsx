@@ -8,9 +8,10 @@ interface HistoryProps {
   history: HistoryItem[];
   onReopen: (story: StoryResponse) => void;
   targetLanguage: string;
+  t: any;
 }
 
-const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage }) => {
+const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage, t }) => {
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
   const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
 
@@ -51,8 +52,8 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage }) 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
-        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Learning History</h2>
-        <p className="text-slate-500 dark:text-slate-400">Revisit your past breakthroughs</p>
+        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{t.learningHistory || "Learning History"}</h2>
+        <p className="text-slate-500 dark:text-slate-400">{t.revisitBreakthroughs || "Revisit your past breakthroughs"}</p>
       </div>
 
       {history.length === 0 ? (
@@ -60,7 +61,7 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage }) 
           <div className="bg-slate-50 dark:bg-slate-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto text-slate-300 dark:text-slate-600">
             <Clock size={40} />
           </div>
-          <p className="text-slate-500 dark:text-slate-400 font-medium italic">Your story list is currently empty.</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium italic">{t.historyEmpty || "Your story list is currently empty."}</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -87,7 +88,7 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage }) 
                       </span>
                     ))}
                     {(item.new_words_to_add || []).length > 3 && (
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">+{(item.new_words_to_add || []).length - 3} more</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">+{(item.new_words_to_add || []).length - 3} {t.moreWords || "more"}</span>
                     )}
                   </div>
                 </div>
@@ -96,23 +97,23 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage }) 
                 <button 
                   onClick={() => handlePlayHistoryAudio(idx, item)}
                   disabled={playingIdx !== null}
-                  className="p-3 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-full transition-all disabled:opacity-50"
-                  title="Ouvir história completa"
+                  className="p-3 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-full transition-all disabled:opacity-50 cursor-pointer"
+                  title={t.listenStory || "Listen to story"}
                 >
                   {playingIdx === idx ? <Loader2 size={20} className="animate-spin" /> : <Play size={20} />}
                 </button>
                 <button 
                   onClick={() => handleDownloadHistoryAudio(idx, item)}
                   disabled={downloadingIdx !== null}
-                  className="p-3 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-full transition-all disabled:opacity-50"
-                  title="Baixar áudio"
+                  className="p-3 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-full transition-all disabled:opacity-50 cursor-pointer"
+                  title={t.downloadAudio || "Download audio (.wav)"}
                 >
                   {downloadingIdx === idx ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />}
                 </button>
                 <button 
                   onClick={() => onReopen(item)}
-                  className="p-3 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all"
-                  title="Reabrir lição"
+                  className="p-3 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all cursor-pointer"
+                  title={t.reopenLesson || "Reopen lesson"}
                 >
                   <ExternalLink size={20} />
                 </button>

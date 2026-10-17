@@ -46,7 +46,7 @@ export const VocabularyExplorer: React.FC<VocabularyExplorerProps> = ({
     
     // Check if word already exists (case-insensitive)
     if (words.some(w => w.toLowerCase() === trimmed)) {
-      alert(`"${trimmed}" is already in your known vocabulary list.`);
+      alert(`"${trimmed}" ${t.wordAlreadyExists || "is already in your known vocabulary list."}`);
       return;
     }
 
@@ -190,7 +190,7 @@ export const VocabularyExplorer: React.FC<VocabularyExplorerProps> = ({
                   key={`${word}-${idx}`}
                   className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-medium border border-slate-200 dark:border-slate-700/80 shadow-2xs hover:border-indigo-300 dark:hover:border-indigo-600 transition-all cursor-pointer"
                   onClick={() => handleCopyWord(word)}
-                  title="Click to copy"
+                  title={t.clickToCopy || "Click to copy"}
                 >
                   <span className="font-mono">{word}</span>
                   {isCopied ? (
@@ -202,8 +202,8 @@ export const VocabularyExplorer: React.FC<VocabularyExplorerProps> = ({
                         e.stopPropagation();
                         handleRemoveWord(word);
                       }}
-                      className="opacity-40 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-all ml-0.5"
-                      title={`Remove "${word}"`}
+                      className="opacity-40 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-all ml-0.5 cursor-pointer"
+                      title={`${t.removeWord || "Remove"} "${word}"`}
                     >
                       <X size={12} />
                     </button>

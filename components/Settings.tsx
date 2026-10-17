@@ -1,8 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, CEFRLevel, UILanguage, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from '../types';
-import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles, Search, Target } from 'lucide-react';
+import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles, Search, Target, Key, Eye, EyeOff, HelpCircle, FileJson, CheckCircle2, ShieldCheck, X, Layers } from 'lucide-react';
 import { VocabularyExplorer } from './VocabularyExplorer';
+import { ApiKeyTutorialModal } from './ApiKeyTutorialModal';
+import { JsonBackupTutorialModal } from './JsonBackupTutorialModal';
 
 const STARTER_VOCABULARY: Record<string, string[]> = {
   'Shakespearean English': [
@@ -42,6 +44,9 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
   const [formData, setFormData] = useState<UserProfile>(profile);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [vocabViewMode, setVocabViewMode] = useState<'interactive' | 'raw'>('interactive');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isApiKeyTutorialOpen, setIsApiKeyTutorialOpen] = useState(false);
+  const [isJsonTutorialOpen, setIsJsonTutorialOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Keep local state in sync when external profile changes (e.g. on JSON import)
@@ -88,16 +93,19 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
     'Japanese', 'Chinese', 'Russian', 'Latin', 'Modern Greek', 'Ancient Greek'
   ];
   const uiLanguages: {code: UILanguage, label: string}[] = [
-    {code: 'en', label: 'English'},
     {code: 'pt', label: 'Português'},
-    {code: 'es', label: 'Español'}
+    {code: 'en', label: 'English'},
+    {code: 'es', label: 'Español'},
+    {code: 'fr', label: 'Français'},
+    {code: 'de', label: 'Deutsch'},
+    {code: 'it', label: 'Italiano'}
   ];
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
         <h2 className="text-3xl font-bold text-slate-900 dark:text-white text-center">{t.settings}</h2>
-        <p className="text-slate-500 dark:text-slate-400 text-center">Customize your experience</p>
+        <p className="text-slate-500 dark:text-slate-400 text-center">{t.customizeExperience || "Customize your experience"}</p>
       </div>
 
       <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-8">
@@ -105,7 +113,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <User size={16} /> Display Name
+              <User size={16} /> {t.displayName || "Display Name"}
             </label>
             <input 
               type="text" 
@@ -117,7 +125,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
 
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <GraduationCap size={16} /> CEFR Level
+              <GraduationCap size={16} /> {t.cefr || "CEFR Level"}
             </label>
             <select 
               value={formData.level}
@@ -132,12 +140,12 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
         {/* Learning Preferences */}
         <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <BookOpen size={20} /> Learning Preferences
+            <BookOpen size={20} /> {t.learningPreferences || "Learning Preferences"}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                Target Language
+                {t.targetLanguage || "Target Language"}
               </label>
               <select 
                 value={formData.targetLanguage}
@@ -198,10 +206,10 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-2 italic flex items-center gap-1">
                   <Sparkles size={12} className="shrink-0" />
                   {formData.shakespeareanFocus === 'drama'
-                    ? "Foco em drama e tragédias épicas: temas solenes, destino, honra e monólogos poéticos."
+                    ? (t.shakespeareanDramaDesc || "Tragedy & epic drama: solemn themes, fate, honor, and poetic soliloquies.")
                     : formData.shakespeareanFocus === 'courtly'
-                    ? "Foco cortesão e sonetos: corte amorosa, jogo de palavras, elegância lírica e sagacidade."
-                    : "Inglês elizabetano clássico: pronomes arcaicos (thou/thee/thy), flexões verbais (-eth/-est) e cadência teatral."
+                    ? (t.shakespeareanCourtlyDesc || "Courtly romance and sonnets: wordplay, lyrical elegance, and romantic wit.")
+                    : (t.shakespeareanGeneralDesc || "Classic Elizabethan English: archaic pronouns (thou/thee/thy), verbal inflections (-eth/-est), and theatrical cadence.")
                   }
                 </p>
               </div>
@@ -257,7 +265,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                   </div>
                   {formData.ancientGreekFocus === 'philosophical' && (
                     <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-1 font-medium italic">
-                      Léxico especializado: Platão e Aristóteles.
+                      {t.philosophicalDesc || "Specialized vocabulary: Plato and Aristotle"}
                     </p>
                   )}
                 </div>
@@ -269,11 +277,11 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
         {/* Localization & Notifications */}
         <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Languages size={20} /> Localization
+            <Languages size={20} /> {t.localization || "Localization"}
           </h3>
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              Interface Language
+              {t.interfaceLanguage || "Interface Language"}
             </label>
             <select 
               value={formData.uiLanguage}
@@ -296,7 +304,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {t.dailyGoalDesc || "Set target lessons to complete each day to track your progress ring on the dashboard."}
+            {t.dailyGoalDesc || "Set target lessons to complete each day"}
           </p>
 
           <div className="grid grid-cols-4 gap-2.5">
@@ -321,7 +329,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
 
           <div className="flex items-center gap-3 pt-1">
             <label className="text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">
-              Custom goal:
+              {t.customGoal || "Custom goal:"}
             </label>
             <input
               type="number"
@@ -336,18 +344,18 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
               }}
               className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
             />
-            <span className="text-xs text-slate-400">lessons / day</span>
+            <span className="text-xs text-slate-400">{t.dailyGoalTarget || "lessons / day"}</span>
           </div>
         </div>
 
         <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Bell size={20} /> Notifications & Display
+            <Bell size={20} /> {t.notificationsDisplay || "Notifications & Display"}
           </h3>
           <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
             <div>
-              <p className="font-bold text-slate-800 dark:text-slate-100">Study Notifications</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Daily reminders</p>
+              <p className="font-bold text-slate-800 dark:text-slate-100">{t.studyNotifications || "Study Notifications"}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t.dailyReminders || "Daily reminders"}</p>
             </div>
             <button 
               type="button"
@@ -359,16 +367,205 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
           </div>
         </div>
 
+        {/* Anki Spaced Repetition Settings */}
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <Layers size={20} className="text-indigo-600 dark:text-indigo-400" />
+              {t.srsSettingsTitle || "Revisão Espaçada (SRS / Anki)"}
+            </h3>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-full">
+              Curva do Esquecimento
+            </span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            {t.srsSettingsSubtitle || "Configure como o verso de cada flashcard i+1 é apresentado durante as revisões de repetição espaçada."}
+          </p>
+
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+              {t.srsCardBackSetting || "Conteúdo Principal do Verso do Card"}
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, srsBackType: 'full_translation' })}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                  (formData.srsBackType || 'full_translation') === 'full_translation'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-600 dark:border-indigo-500 shadow-sm'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-lg">📝</span>
+                  {(formData.srsBackType || 'full_translation') === 'full_translation' && (
+                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    {t.srsBackFull || "Tradução Completa"}
+                  </div>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    {t.srsBackFullDesc || "Frase inteira no idioma nativo"}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, srsBackType: 'element_translation' })}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                  formData.srsBackType === 'element_translation'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-600 dark:border-indigo-500 shadow-sm'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-lg">🎯</span>
+                  {formData.srsBackType === 'element_translation' && (
+                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    {t.srsBackElement || "Tradução do Elemento"}
+                  </div>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    {t.srsBackElementDesc || "Foco no elemento i+1 isolado"}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, srsBackType: 'target_definition' })}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                  formData.srsBackType === 'target_definition'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-600 dark:border-indigo-500 shadow-sm'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-lg">🌐</span>
+                  {formData.srsBackType === 'target_definition' && (
+                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    {t.srsBackDefinition || "Definição no Alvo"}
+                  </div>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    {t.srsBackDefinitionDesc || "100% imersão no idioma"}
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Gemini API Key Section */}
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Key size={20} className="text-amber-500" />
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                  {t.apiKey || "Chave de API do Gemini"}
+                </h3>
+                {formData.apiKey && formData.apiKey.trim().length > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    <CheckCircle2 size={12} />
+                    {t.apiKeyConfigured || "Chave Configurada"}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    <Info size={12} />
+                    {t.apiKeyMissing || "Nenhuma chave configurada"}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {t.apiKeySubtitle || "Necessária para gerar histórias exclusivas (i+1) e revisões de vocabulário com inteligência artificial."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsApiKeyTutorialOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl border border-indigo-100 dark:border-indigo-900/40 transition-all cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <HelpCircle size={14} />
+              <span>{t.howToGetFreeKey || "Como obter chave gratuita"}</span>
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <div className="relative flex items-center">
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={formData.apiKey || ''}
+                onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                placeholder={t.apiKeyPlaceholder || "Cole sua chave do Google Gemini (ex: AIzaSy...)"}
+                className="w-full pl-4 pr-24 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              />
+              <div className="absolute right-2 flex items-center gap-1">
+                {formData.apiKey && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, apiKey: '' })}
+                    className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    title={t.clear || "Limpar"}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  title={showApiKey ? (t.hide || "Ocultar") : (t.show || "Mostrar")}
+                >
+                  {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5 pt-0.5">
+              <ShieldCheck size={13} className="text-emerald-500 shrink-0" />
+              <span>{t.apiKeyHelp || "Sua chave fica salva no seu navegador (localStorage) e no backup JSON que você exportar."}</span>
+            </p>
+          </div>
+        </div>
+
         {/* Data Management Section */}
-        <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Database size={20} /> {t.export} / {t.import}
-          </h3>
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Database size={20} className="text-indigo-600 dark:text-indigo-400" /> {t.export} / {t.import}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {t.dataManagementSubtitle || "Exporte seu vocabulário, histórico e chave em formato JSON ou restaure seu progresso."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsJsonTutorialOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl border border-emerald-100 dark:border-emerald-900/40 transition-all cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <FileJson size={14} />
+              <span>{t.backupRestoreGuideBtn || "Como salvar & restaurar (Guia)"}</span>
+            </button>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <button type="button" onClick={onExport} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold rounded-xl transition-all">
+            <button type="button" onClick={onExport} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-xl transition-all cursor-pointer">
               <Download size={18} /> {t.export}
             </button>
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold rounded-xl transition-all">
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-xl transition-all cursor-pointer">
               <Upload size={18} /> {t.import}
             </button>
             <input type="file" ref={fileInputRef} onChange={onImport} className="hidden" accept=".json" />
@@ -384,7 +581,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 {t.wordsLearned || "Known Vocabulary"} ({formData.knownWords.length})
               </label>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Search, filter, or manage vocabulary used by Gemini for precise i+1 generation.
+                {t.vocabExplorerSubtitle || "Search, filter, or manage vocabulary used by Gemini for precise i+1 generation."}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -392,7 +589,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 <button
                   type="button"
                   onClick={() => setVocabViewMode('interactive')}
-                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                     vocabViewMode === 'interactive'
                       ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -403,7 +600,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 <button
                   type="button"
                   onClick={() => setVocabViewMode('raw')}
-                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                     vocabViewMode === 'raw'
                       ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -415,8 +612,8 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
               <button
                 type="button"
                 onClick={loadStarterVocabForLanguage}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 transition-all flex items-center gap-1.5 shrink-0"
-                title="Load starter vocabulary for current language"
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                title={t.loadStarterVocab}
               >
                 <Sparkles size={13} /> {t.loadStarterVocab}
               </button>
@@ -441,13 +638,13 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-mono leading-relaxed"
               />
               <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                <Info size={12} /> Separate words with commas. Changes will be saved with the form.
+                <Info size={12} /> {t.separateCommas || "Separate words with commas. Changes will be saved."}
               </p>
             </div>
           )}
 
           <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 pt-1">
-            <Info size={12} /> Sending {formData.knownWords.length} words to Gemini for precise i+1 generation.
+            <Info size={12} /> {t.sendingWordsToAI || "Sending words to Gemini for precise i+1 generation"} ({formData.knownWords.length} {t.words || "words"})
           </p>
         </div>
 
@@ -457,11 +654,32 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
           disabled={saveStatus !== 'idle'}
           className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:bg-slate-500 cursor-pointer"
         >
-          {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved!' : (
-            <><Save size={20} /> Save Changes</>
+          {saveStatus === 'saving' ? (t.saving || 'Saving...') : saveStatus === 'saved' ? (t.saved || 'Saved!') : (
+            <><Save size={20} /> {t.saveChanges || "Save Changes"}</>
           )}
         </button>
       </div>
+
+      {/* API Key Step-by-Step Tutorial Modal */}
+      <ApiKeyTutorialModal
+        isOpen={isApiKeyTutorialOpen}
+        onClose={() => setIsApiKeyTutorialOpen(false)}
+        currentApiKey={formData.apiKey}
+        onSaveKey={(newKey) => {
+          setFormData({ ...formData, apiKey: newKey });
+          setProfile({ ...formData, apiKey: newKey });
+        }}
+        t={t}
+      />
+
+      {/* JSON Backup & Restore Tutorial Modal */}
+      <JsonBackupTutorialModal
+        isOpen={isJsonTutorialOpen}
+        onClose={() => setIsJsonTutorialOpen(false)}
+        onExport={onExport}
+        onTriggerImport={() => fileInputRef.current?.click()}
+        t={t}
+      />
     </div>
   );
 };

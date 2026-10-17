@@ -1,5 +1,6 @@
 {
   "name": "Polyglot i+1: Natural Method Language Studio",
   "description": "An advanced language learning application based on the Natural Method (i+1), using Gemini AI to generate customized content for your specific vocabulary level.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

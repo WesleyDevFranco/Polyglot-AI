@@ -1,6 +1,6 @@
 
 export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
-export type UILanguage = 'en' | 'pt' | 'es';
+export type UILanguage = 'en' | 'pt' | 'es' | 'fr' | 'de' | 'it';
 export type StorySize = 'short' | 'standard' | 'medium' | 'long';
 export type AncientGreekDialect = 'attic' | 'koine';
 export type AncientGreekFocus = 'general' | 'philosophical';
@@ -42,9 +42,42 @@ export interface UserProfile {
   streakCount?: number;
   lastCompletedDate?: string;
   dailyGoal?: number;
+  apiKey?: string;
+  srsBackType?: SRSBackType;
+  srsDailyGoal?: number;
 }
 
 export interface HistoryItem extends StoryResponse {
   timestamp: number;
   completed: boolean;
+}
+
+export type SRSBackType = 'full_translation' | 'element_translation' | 'target_definition';
+
+export type SRSCardRating = 1 | 2 | 3 | 4; // 1 = Again, 2 = Hard, 3 = Good, 4 = Easy
+
+export interface SRSCard {
+  id: string;
+  storyTitle: string;
+  storyTimestamp: number;
+  sentence: Sentence;
+  targetLanguage: string;
+  nativeLanguage: string;
+  state: 'new' | 'learning' | 'review' | 'mastered';
+  reps: number;
+  lapses: number;
+  easeFactor: number; // default 2.5
+  interval: number; // in days
+  dueDate: number; // timestamp (ms)
+  lastReviewed?: number; // timestamp (ms)
+}
+
+export interface SRSStats {
+  totalCards: number;
+  dueToday: number;
+  newCards: number;
+  learningCards: number;
+  reviewCards: number;
+  masteredCards: number;
+  reviewedTodayCount: number;
 }

@@ -38,13 +38,13 @@ export const VocabularyModal: React.FC<VocabularyModalProps> = ({
                 {t.wordsLearned || "Learned Vocabulary"}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {targetLanguage} • {words.length} {t.words || "words"} in your active lexicon
+                {targetLanguage} • {words.length} {t.words || "words"} {t.inActiveLexicon || "in your active lexicon"}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X size={20} />
           </button>
@@ -65,9 +65,9 @@ export const VocabularyModal: React.FC<VocabularyModalProps> = ({
         <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-bold rounded-xl transition-all"
+            className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-bold rounded-xl transition-all cursor-pointer"
           >
-            Close
+            {t.close || "Close"}
           </button>
         </div>
       </div>

@@ -102,21 +102,21 @@ export const ProgressChart: React.FC<ProgressChartProps> = ({
             <span className="font-bold text-slate-200">{item.fullDate}</span>
             {item.isToday && (
               <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded-full font-semibold">
-                Today
+                {t.today || "Today"}
               </span>
             )}
           </div>
           <div className="flex items-center justify-between pt-1">
-            <span className="text-slate-400">Vocabulary:</span>
+            <span className="text-slate-400">{t.vocab || "Vocabulary"}:</span>
             <span className="font-bold font-mono text-indigo-400 text-sm">{item.words}</span>
           </div>
           {item.newWords > 0 ? (
             <div className="flex items-center justify-between text-emerald-400 font-semibold">
-              <span>Learned:</span>
-              <span className="font-mono">+{item.newWords} words</span>
+              <span>{t.learned || "Learned:"}</span>
+              <span className="font-mono">+{item.newWords} {t.words || "words"}</span>
             </div>
           ) : (
-            <div className="text-[10px] text-slate-500 italic">No new words</div>
+            <div className="text-[10px] text-slate-500 italic">{t.noNewWords || "No new words"}</div>
           )}
         </div>
       );
@@ -135,10 +135,10 @@ export const ProgressChart: React.FC<ProgressChartProps> = ({
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                Progress Chart
+                {t.progressChart || "Progress Chart"}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Vocabulary growth (known words) over the last 30 days
+                {t.progressChartDesc || "Vocabulary growth (known words) over the last 30 days"}
               </p>
             </div>
           </div>
@@ -147,13 +147,13 @@ export const ProgressChart: React.FC<ProgressChartProps> = ({
         {/* Quick Stats Badges */}
         <div className="flex items-center gap-3">
           <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-100 dark:border-slate-800 text-right">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">30d Growth</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t.thirtyDayGrowth || "30d Growth"}</span>
             <span className="text-base font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-              +{stats.growth} <span className="text-xs font-normal text-slate-500">words</span>
+              +{stats.growth} <span className="text-xs font-normal text-slate-500">{t.words || "words"}</span>
             </span>
           </div>
           <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-100 dark:border-slate-800 text-right">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Days</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t.activeDays || "Active Days"}</span>
             <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono">
               {stats.activeDays} <span className="text-xs font-normal text-slate-500">/ 30</span>
             </span>
@@ -221,10 +221,10 @@ export const ProgressChart: React.FC<ProgressChartProps> = ({
       <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block"></span>
-          Cumulative Known Vocabulary
+          {t.cumulativeVocab || "Cumulative Known Vocabulary"}
         </span>
         <span>
-          Current: <strong className="text-slate-700 dark:text-slate-300 font-bold">{currentTotal} words</strong>
+          {t.current || "Current:"} <strong className="text-slate-700 dark:text-slate-300 font-bold">{currentTotal} {t.words || "words"}</strong>
         </span>
       </div>
     </div>

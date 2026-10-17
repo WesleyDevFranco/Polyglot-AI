@@ -2,7 +2,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { CEFRLevel, StoryResponse, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from "../types";
 
-const getApiKey = () => process.env.API_KEY || process.env.GEMINI_API_KEY || "";
+export const getApiKey = (customApiKey?: string): string => {
+  if (customApiKey && customApiKey.trim().length > 0) {
+    return customApiKey.trim();
+  }
+  return process.env.API_KEY || process.env.GEMINI_API_KEY || "";
+};
 
 const sanitizeKnownWords = (words: any): string[] => {
   if (!words) return [];
@@ -101,9 +106,14 @@ export const generateStory = async (
   storySize: StorySize,
   ancientGreekDialect?: AncientGreekDialect,
   ancientGreekFocus?: AncientGreekFocus,
-  shakespeareanFocus?: ShakespeareanFocus
+  shakespeareanFocus?: ShakespeareanFocus,
+  customApiKey?: string
 ): Promise<StoryResponse> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = getApiKey(customApiKey);
+  if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
+    throw new Error("NO_API_KEY");
+  }
+  const ai = new GoogleGenAI({ apiKey });
   const sizeMap = { short: "5 to 10", standard: "exactly 10", medium: "10 to 15", long: "15 to 25" };
   const sentenceCount = sizeMap[storySize] || "5 to 10";
   const { langDisplay, focusInstruction } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
@@ -176,9 +186,14 @@ export const generateReviewStory = async (
   knownWords: string[],
   ancientGreekDialect?: AncientGreekDialect,
   ancientGreekFocus?: AncientGreekFocus,
-  shakespeareanFocus?: ShakespeareanFocus
+  shakespeareanFocus?: ShakespeareanFocus,
+  customApiKey?: string
 ): Promise<StoryResponse> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = getApiKey(customApiKey);
+  if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
+    throw new Error("NO_API_KEY");
+  }
+  const ai = new GoogleGenAI({ apiKey });
   const { langDisplay, focusInstruction } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
 
   const cleanWords = sanitizeKnownWords(knownWords);

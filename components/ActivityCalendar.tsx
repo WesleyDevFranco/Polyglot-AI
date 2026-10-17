@@ -137,13 +137,13 @@ export const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
         {/* Summary Badges */}
         <div className="flex items-center gap-3">
           <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-100 dark:border-slate-800 text-right">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">30d Lessons</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t.thirtyDayLessons || "30d Lessons"}</span>
             <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-              {totalLessons} <span className="text-xs font-normal text-slate-500">{totalLessons === 1 ? 'lesson' : 'lessons'}</span>
+              {totalLessons} <span className="text-xs font-normal text-slate-500">{totalLessons === 1 ? (t.lesson || 'lesson') : (t.lessons || 'lessons')}</span>
             </span>
           </div>
           <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-100 dark:border-slate-800 text-right">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Days</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t.activeDays || "Active Days"}</span>
             <span className="text-base font-bold text-indigo-600 dark:text-indigo-400 font-mono">
               {activeDaysCount} <span className="text-xs font-normal text-slate-500">/ 30</span>
             </span>
@@ -168,7 +168,7 @@ export const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
                 <div className="flex items-center justify-between w-full px-1">
                   <span className="text-[9px] font-medium opacity-80">{day.weekdayLabel}</span>
                   {day.isToday && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 animate-pulse" title="Today" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 animate-pulse" title={t.today || "Today"} />
                   )}
                 </div>
 
@@ -190,20 +190,20 @@ export const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
                 <div className="opacity-0 group-hover:opacity-100 absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white text-xs px-3 py-2 rounded-xl pointer-events-none whitespace-nowrap z-30 shadow-xl border border-slate-700/80 transition-all duration-150">
                   <div className="font-bold border-b border-slate-700/80 pb-1 mb-1 text-slate-200 flex items-center justify-between gap-3">
                     <span>{day.formattedDate}</span>
-                    {day.isToday && <span className="text-[10px] text-indigo-400 font-semibold">(Today)</span>}
+                    {day.isToday && <span className="text-[10px] text-indigo-400 font-semibold">({t.today || "Today"})</span>}
                   </div>
                   <div className="flex items-center justify-between gap-4 text-emerald-400 font-semibold">
-                    <span>Lessons:</span>
-                    <span className="font-mono">{day.lessonCount} {day.lessonCount === 1 ? 'lesson' : 'lessons'}</span>
+                    <span>{t.lessons || "Lessons"}:</span>
+                    <span className="font-mono">{day.lessonCount} {day.lessonCount === 1 ? (t.lesson || 'lesson') : (t.lessons || 'lessons')}</span>
                   </div>
                   {day.wordCount > 0 && (
                     <div className="flex items-center justify-between gap-4 text-indigo-300 text-[11px]">
-                      <span>Words learned:</span>
+                      <span>{t.wordsLearned || "Words learned"}:</span>
                       <span className="font-mono">+{day.wordCount}</span>
                     </div>
                   )}
                   {day.lessonCount === 0 && (
-                    <div className="text-[10px] text-slate-400 italic">No study recorded</div>
+                    <div className="text-[10px] text-slate-400 italic">{t.noLessonsOnDay || "No study recorded"}</div>
                   )}
                 </div>
               </div>
@@ -215,7 +215,7 @@ export const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-1.5">
             <Info size={13} className="shrink-0" />
-            <span>Click or hover on any day to inspect completed lessons.</span>
+            <span>{t.calendarHint || "Click or hover on any day to inspect completed lessons."}</span>
           </div>
 
           <div className="flex items-center gap-2">
