@@ -1,7 +1,10 @@
 
 import React, { useMemo } from 'react';
 import { UserProfile, HistoryItem } from '../types';
-import { Award, Zap, BookOpen, ChevronRight, Loader2, Info, TrendingUp, Activity, Calendar, RefreshCw } from 'lucide-react';
+import { Award, Zap, BookOpen, ChevronRight, Loader2, Info, TrendingUp, Activity, Calendar, RefreshCw, Flame, Search, CheckCircle2, Target, Sparkles, Check } from 'lucide-react';
+import { calculateStreak, getLocalDateKey } from '../utils/streak';
+import { ProgressChart } from './ProgressChart';
+import { ActivityCalendar } from './ActivityCalendar';
 
 interface DashboardProps {
   profile: UserProfile;
@@ -11,9 +14,10 @@ interface DashboardProps {
   historyCount: number;
   t: any;
   history: HistoryItem[];
+  onOpenVocabModal?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, loading, historyCount, t, history }) => {
+const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, loading, historyCount, t, history, onOpenVocabModal }) => {
   const thresholds = [
     { level: 'A1', min: 0, max: 500 },
     { level: 'A2', min: 500, max: 1000 },
@@ -39,13 +43,16 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
 
   const progress = calculateLevelProgress(profile.knownWords.length);
 
-  // Helper to get local date key "YYYY-MM-DD"
-  const getLocalDateKey = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  // Today's Daily Goal Progress
+  const todayKey = getLocalDateKey(new Date());
+  const completedTodayCount = useMemo(() => {
+    if (!Array.isArray(history)) return 0;
+    return history.filter(item => item && item.completed && getLocalDateKey(item.timestamp) === todayKey).length;
+  }, [history, todayKey]);
+
+  const targetGoal = profile.dailyGoal || 1;
+  const goalPercent = Math.min(100, Math.round((completedTodayCount / targetGoal) * 100));
+  const isGoalAchieved = completedTodayCount >= targetGoal;
 
   // Generate growth chart data organized by days (Last 10 Days)
   const growthData = useMemo(() => {
@@ -97,11 +104,46 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
     return Math.round((recentGains / 7) * 10) / 10;
   }, [history]);
 
+  // Calculate streak info from history
+  const streakInfo = useMemo(() => calculateStreak(history), [history]);
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{t.welcome}, {profile.name}!</h2>
+          <div className="flex flex-wrap items-center gap-3 mb-1">
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{t.welcome}, {profile.name}!</h2>
+            <div 
+              className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-sm font-extrabold shadow-sm transition-all border ${
+                streakInfo.streak > 0
+                  ? streakInfo.completedToday
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-orange-400 shadow-orange-500/25 ring-2 ring-orange-400/20'
+                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+              }`}
+              title={streakInfo.completedToday ? (t.streakActive || 'Streak Active Today!') : (streakInfo.streak > 0 ? (t.keepStreak || 'Complete a lesson today to maintain your streak!') : (t.streakBroken || 'Complete a lesson today to start a new streak!'))}
+            >
+              <Flame 
+                size={18} 
+                className={`${
+                  streakInfo.streak > 0 
+                    ? streakInfo.completedToday 
+                      ? 'text-yellow-200 fill-amber-200 animate-pulse' 
+                      : 'text-amber-600 dark:text-amber-400 fill-amber-500/50' 
+                    : 'text-slate-400'
+                }`} 
+              />
+              <span>
+                {streakInfo.streak} {streakInfo.streak === 1 ? (t.day || 'day') : (t.days || 'days')} {t.streak ? t.streak.toLowerCase() : 'streak'}
+              </span>
+              {streakInfo.completedToday && (
+                <span className="flex h-2 w-2 relative" title="Completed today">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+              )}
+            </div>
+          </div>
           <p className="text-slate-500 dark:text-slate-400">{t.ready}</p>
         </div>
         <div className="flex gap-3">
@@ -124,7 +166,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* CEFR Level Progress */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-4">
           <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 p-2 rounded-lg w-fit">
@@ -153,6 +195,99 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
           )}
         </div>
 
+        {/* Daily Study Goal with Progress Ring */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col justify-between gap-3">
+          <div className="flex justify-between items-start">
+            <div className={`p-2 rounded-lg w-fit ${
+              isGoalAchieved 
+                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' 
+                : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+            }`}>
+              <Target size={24} />
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
+                {t.goalProgress || "Daily Goal"}
+              </span>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-mono">
+                {targetGoal} {targetGoal === 1 ? (t.lesson || "lesson") : (t.lessons || "lessons")}
+              </span>
+            </div>
+          </div>
+
+          {/* Circular SVG Progress Ring */}
+          <div className="flex items-center justify-between gap-2 py-1">
+            <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 100 100">
+                {/* Background Ring */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  className="stroke-slate-100 dark:stroke-slate-800"
+                  strokeWidth="8"
+                  fill="transparent"
+                />
+                {/* Dynamic Progress Ring */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  className={`transition-all duration-1000 ease-out ${
+                    isGoalAchieved 
+                      ? 'stroke-emerald-500' 
+                      : 'stroke-indigo-600'
+                  }`}
+                  strokeWidth="8"
+                  strokeDasharray="238.76"
+                  strokeDashoffset={238.76 - (goalPercent / 100) * 238.76}
+                  strokeLinecap="round"
+                  fill="transparent"
+                />
+              </svg>
+              {/* Center Ring Content */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                {isGoalAchieved ? (
+                  <Check size={20} className="text-emerald-500 stroke-[3]" />
+                ) : (
+                  <>
+                    <span className="text-base font-extrabold text-slate-900 dark:text-white leading-none font-mono">
+                      {completedTodayCount}
+                    </span>
+                    <span className="text-[9px] text-slate-400 leading-none mt-0.5">
+                      of {targetGoal}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col justify-center text-right space-y-0.5">
+              <p className="text-2xl font-bold text-slate-900 dark:text-white font-mono">
+                {goalPercent}%
+              </p>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                {completedTodayCount} / {targetGoal} {t.lessons || "lessons"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-auto pt-2 border-t border-slate-100 dark:border-slate-800">
+            {isGoalAchieved ? (
+              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <Sparkles size={13} className="shrink-0" /> {t.goalAchieved || "Goal Achieved! 🎉"}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
+                <span>
+                  <strong>{Math.max(0, targetGoal - completedTodayCount)}</strong> {t.goalLeft || "left today"}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+
         {/* Vocabulary Growth Card - DAILY TIMELINE */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-4">
           <div className="flex justify-between items-start">
@@ -167,8 +302,20 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
             </div>
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Progress Timeline</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{profile.knownWords.length} words</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Progress Timeline</p>
+              {onOpenVocabModal && (
+                <button
+                  type="button"
+                  onClick={onOpenVocabModal}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50 transition-all flex items-center gap-1 cursor-pointer"
+                  title="Search and filter learned words"
+                >
+                  <Search size={12} /> {t.browseVocab || "Search"}
+                </button>
+              )}
+            </div>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">{profile.knownWords.length} words</p>
           </div>
           
           {/* DAILY SVG Growth Chart */}
@@ -201,28 +348,79 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
           </div>
         </div>
 
-        {/* Lessons Completed */}
+        {/* Streak Tracker & Lessons Completed */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-4">
-          <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 p-2 rounded-lg w-fit">
-            <Zap size={24} />
+          <div className="flex justify-between items-start">
+            <div className={`${streakInfo.streak > 0 ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'} p-2 rounded-lg w-fit`}>
+              <Flame size={24} className={streakInfo.streak > 0 ? 'fill-orange-400/50' : ''} />
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t.completed}</p>
+              <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{historyCount}</p>
+            </div>
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.completed}</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{historyCount}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.dayStreak || "Daily Streak"}</p>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                {streakInfo.streak} {streakInfo.streak === 1 ? (t.day || 'day') : (t.days || 'days')}
+              </p>
+              {streakInfo.completedToday ? (
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 size={13} /> Active
+                </span>
+              ) : streakInfo.streak > 0 ? (
+                <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                  ⚡ Today pending
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div className="mt-auto">
-             <p className="text-xs text-slate-400 dark:text-slate-500">Keep your streak alive.</p>
-             <div className="flex gap-1 mt-2">
-               {Array.from({length: 7}).map((_, i) => {
-                 const dayHasLesson = growthData.slice(-7)[i]?.delta > 0;
-                 return (
-                   <div key={i} className={`h-2 w-full rounded-sm ${dayHasLesson ? 'bg-emerald-500' : 'bg-slate-100 dark:bg-slate-800'}`} />
-                 );
-               })}
+          <div className="mt-auto space-y-2">
+             <p className="text-xs text-slate-500 dark:text-slate-400">
+               {streakInfo.completedToday 
+                 ? (t.streakActive || "Streak secured for today!") 
+                 : streakInfo.streak > 0 
+                 ? (t.keepStreak || "Complete a lesson today to keep your streak!") 
+                 : (t.streakBroken || "Complete a lesson today to start a streak!")}
+             </p>
+             <div className="grid grid-cols-7 gap-1 pt-1">
+               {streakInfo.dailyStatus.map((day, idx) => (
+                 <div key={idx} className="flex flex-col items-center gap-1">
+                   <div 
+                     className={`h-7 w-full rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${
+                       day.completed
+                         ? 'bg-gradient-to-t from-orange-500 to-amber-500 text-white shadow-xs'
+                         : day.isToday
+                         ? 'bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-orange-400 text-orange-500'
+                         : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                     }`}
+                     title={`${day.dateStr}: ${day.completed ? 'Lesson completed' : 'No lesson'}`}
+                   >
+                     {day.completed ? <Flame size={12} className="fill-white" /> : day.label}
+                   </div>
+                   <span className="text-[9px] text-slate-400 font-medium">{day.label}</span>
+                 </div>
+               ))}
              </div>
           </div>
         </div>
       </div>
+
+      {/* 30-Day Vocabulary Growth Line Graph using Recharts */}
+      <ProgressChart 
+        history={history} 
+        currentTotal={profile.knownWords.length} 
+        t={t}
+        darkMode={profile.darkMode}
+      />
+
+      {/* 30-Day Study Activity Calendar Heatmap */}
+      <ActivityCalendar 
+        history={history} 
+        t={t}
+        dailyGoal={targetGoal}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Main Philosophy Section */}

@@ -81,13 +81,13 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage }) 
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {item.new_words_to_add.slice(0, 3).map((w, i) => (
+                    {(item.new_words_to_add || []).slice(0, 3).map((w, i) => (
                       <span key={i} className="text-[10px] bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-900/30">
                         {w}
                       </span>
                     ))}
-                    {item.new_words_to_add.length > 3 && (
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">+{item.new_words_to_add.length - 3} more</span>
+                    {(item.new_words_to_add || []).length > 3 && (
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">+{(item.new_words_to_add || []).length - 3} more</span>
                     )}
                   </div>
                 </div>

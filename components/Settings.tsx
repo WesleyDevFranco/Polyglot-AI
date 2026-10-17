@@ -1,7 +1,8 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, CEFRLevel, UILanguage, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from '../types';
-import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles } from 'lucide-react';
+import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles, Search, Target } from 'lucide-react';
+import { VocabularyExplorer } from './VocabularyExplorer';
 
 const STARTER_VOCABULARY: Record<string, string[]> = {
   'Shakespearean English': [
@@ -40,10 +41,18 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onImport, t }) => {
   const [formData, setFormData] = useState<UserProfile>(profile);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [vocabViewMode, setVocabViewMode] = useState<'interactive' | 'raw'>('interactive');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Keep local state in sync when external profile changes (e.g. on JSON import)
+  useEffect(() => {
+    setFormData(profile);
+  }, [profile]);
+
+  const handleSave = (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && 'preventDefault' in e) {
+      e.preventDefault();
+    }
     setSaveStatus('saving');
     setTimeout(() => {
       setProfile(formData);
@@ -91,7 +100,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
         <p className="text-slate-500 dark:text-slate-400 text-center">Customize your experience</p>
       </div>
 
-      <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-8">
+      <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-8">
         {/* Core Profile */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -276,6 +285,61 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
           </div>
         </div>
 
+        {/* Daily Study Goal */}
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <Target size={20} className="text-indigo-600 dark:text-indigo-400" /> {t.dailyGoal || "Daily Study Goal"}
+            </h3>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+              {formData.dailyGoal || 1} {t.dailyGoalTarget || "lessons / day"}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t.dailyGoalDesc || "Set target lessons to complete each day to track your progress ring on the dashboard."}
+          </p>
+
+          <div className="grid grid-cols-4 gap-2.5">
+            {[1, 2, 3, 5].map((target) => (
+              <button
+                key={target}
+                type="button"
+                onClick={() => setFormData({ ...formData, dailyGoal: target })}
+                className={`py-3 px-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+                  (formData.dailyGoal || 1) === target
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-300'
+                }`}
+              >
+                <span>{target}</span>
+                <span className="text-[10px] font-normal opacity-80">
+                  {target === 1 ? (t.lesson || "lesson") : (t.lessons || "lessons")}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">
+              Custom goal:
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={formData.dailyGoal || 1}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 1 && val <= 50) {
+                  setFormData({ ...formData, dailyGoal: val });
+                }
+              }}
+              className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+            <span className="text-xs text-slate-400">lessons / day</span>
+          </div>
+        </div>
+
         <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Bell size={20} /> Notifications & Display
@@ -311,41 +375,93 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
           </div>
         </div>
 
-        {/* Vocab List - FULL ACCESS */}
-        <div className="space-y-3 pt-6 border-t border-slate-100 dark:border-slate-800">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              Known Vocabulary (Full Context for AI)
-            </label>
-            <button
-              type="button"
-              onClick={loadStarterVocabForLanguage}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50 transition-all flex items-center gap-1.5 w-fit"
-            >
-              <Sparkles size={13} /> {t.loadStarterVocab} ({formData.targetLanguage === 'Shakespearean English' ? t.shakespearean : formData.targetLanguage})
-            </button>
+        {/* Vocab List - SEARCH BAR & INTERACTIVE EXPLORER */}
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <label className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <BookOpen size={18} className="text-indigo-600 dark:text-indigo-400" />
+                {t.wordsLearned || "Known Vocabulary"} ({formData.knownWords.length})
+              </label>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Search, filter, or manage vocabulary used by Gemini for precise i+1 generation.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center text-xs">
+                <button
+                  type="button"
+                  onClick={() => setVocabViewMode('interactive')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    vocabViewMode === 'interactive'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                >
+                  {t.interactiveView || "Search & Filter"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVocabViewMode('raw')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    vocabViewMode === 'raw'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                >
+                  {t.rawEdit || "Raw CSV"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={loadStarterVocabForLanguage}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 transition-all flex items-center gap-1.5 shrink-0"
+                title="Load starter vocabulary for current language"
+              >
+                <Sparkles size={13} /> {t.loadStarterVocab}
+              </button>
+            </div>
           </div>
-          <textarea 
-            value={formData.knownWords.join(', ')}
-            onChange={(e) => setFormData({...formData, knownWords: e.target.value.split(',').map(w => w.trim()).filter(w => w !== '')})}
-            rows={8}
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-mono leading-relaxed"
-          />
-          <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+
+          {vocabViewMode === 'interactive' ? (
+            <VocabularyExplorer
+              words={formData.knownWords}
+              onChangeWords={(newWords) => setFormData({ ...formData, knownWords: newWords })}
+              targetLanguage={formData.targetLanguage}
+              t={t}
+              allowEdit={true}
+            />
+          ) : (
+            <div className="space-y-2">
+              <textarea 
+                value={formData.knownWords.join(', ')}
+                onChange={(e) => setFormData({...formData, knownWords: e.target.value.split(',').map(w => w.trim()).filter(w => w !== '')})}
+                rows={8}
+                placeholder="word1, word2, word3..."
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-mono leading-relaxed"
+              />
+              <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                <Info size={12} /> Separate words with commas. Changes will be saved with the form.
+              </p>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 pt-1">
             <Info size={12} /> Sending {formData.knownWords.length} words to Gemini for precise i+1 generation.
           </p>
         </div>
 
         <button
-          type="submit"
+          type="button"
+          onClick={handleSave}
           disabled={saveStatus !== 'idle'}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:bg-slate-500"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:bg-slate-500 cursor-pointer"
         >
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved!' : (
             <><Save size={20} /> Save Changes</>
           )}
         </button>
-      </form>
+      </div>
     </div>
   );
 };

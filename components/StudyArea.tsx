@@ -64,12 +64,43 @@ function createWavBlob(pcmData: Int16Array, sampleRate: number): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
+const speakWithBrowser = (text: string, lang: string) => {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  const langMap: Record<string, string> = {
+    'English': 'en-US',
+    'Shakespearean English': 'en-GB',
+    'Spanish': 'es-ES',
+    'Portuguese': 'pt-BR',
+    'French': 'fr-FR',
+    'German': 'de-DE',
+    'Italian': 'it-IT',
+    'Japanese': 'ja-JP',
+    'Chinese': 'zh-CN',
+    'Russian': 'ru-RU',
+    'Latin': 'la',
+    'Modern Greek': 'el-GR',
+    'Ancient Greek': 'el-GR'
+  };
+  utterance.lang = langMap[lang] || 'en-US';
+  utterance.rate = 0.9;
+  window.speechSynthesis.speak(utterance);
+};
+
 const getFullStoryAudioData = async (story: StoryResponse, targetLanguage: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
-  const fullText = story.sentences.map(s => s.original).join(" ");
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+  const sentences = Array.isArray(story?.sentences) ? story.sentences : [];
+  if (sentences.length === 0) throw new Error("A história não possui frases.");
+  const fullText = sentences.map(s => s.original).join(" ");
   
+  if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
+    throw new Error("API key not configured");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-tts",
+    model: "gemini-3.8-flash-tts",
     contents: [{ parts: [{ text: `Read the following story naturally in ${targetLanguage}: ${fullText}` }] }],
     config: {
       responseModalities: [Modality.AUDIO],
@@ -105,7 +136,7 @@ export const downloadFullStoryAudio = async (story: StoryResponse, targetLanguag
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${story.story_title.replace(/\s+/g, '_')}_full_audio.wav`;
+  a.download = `${(story.story_title || 'story').replace(/\s+/g, '_')}_full_audio.wav`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -117,12 +148,17 @@ const SentenceCard: React.FC<{ sentence: Sentence; targetLanguage: string; t_app
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
 
   const speak = async () => {
-    if (isProcessingAudio) return;
+    if (isProcessingAudio || !sentence?.original) return;
     setIsProcessingAudio(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+      if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
+        speakWithBrowser(sentence.original, targetLanguage);
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
+        model: "gemini-3.8-flash-tts",
         contents: [{ parts: [{ text: `Read the following sentence out loud in ${targetLanguage}: ${sentence.original}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
@@ -132,7 +168,10 @@ const SentenceCard: React.FC<{ sentence: Sentence; targetLanguage: string; t_app
         },
       });
       const base64Data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-      if (!base64Data) throw new Error("No audio data");
+      if (!base64Data) {
+        speakWithBrowser(sentence.original, targetLanguage);
+        return;
+      }
       const audioBytes = decodeBase64(base64Data);
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       const audioCtx = new AudioContextClass({ sampleRate: 24000 });
@@ -142,26 +181,33 @@ const SentenceCard: React.FC<{ sentence: Sentence; targetLanguage: string; t_app
       source.buffer = buffer;
       source.connect(audioCtx.destination);
       source.start();
-    } catch (err: any) {
-      alert(`Audio Error: ${err.message}`);
+    } catch {
+      speakWithBrowser(sentence.original, targetLanguage);
     } finally {
       setIsProcessingAudio(false);
     }
   };
 
   const renderHighlightedSentence = () => {
+    if (!sentence || !sentence.original) return "";
     if (!sentence.new_element || isReview) return sentence.original;
-    const parts = sentence.original.split(new RegExp(`(${sentence.new_element})`, 'gi'));
-    return parts.map((part, index) => {
-      if (part.toLowerCase() === sentence.new_element.toLowerCase()) {
-        return (
-          <span key={index} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-md border-b-2 border-indigo-400 dark:border-indigo-600 font-semibold">
-            {part}
-          </span>
-        );
-      }
-      return part;
-    });
+    try {
+      const escaped = sentence.new_element.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const parts = sentence.original.split(new RegExp(`(${escaped})`, 'gi'));
+      if (!Array.isArray(parts)) return sentence.original;
+      return parts.map((part, index) => {
+        if (part.toLowerCase() === sentence.new_element.toLowerCase()) {
+          return (
+            <span key={index} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-md border-b-2 border-indigo-400 dark:border-indigo-600 font-semibold">
+              {part}
+            </span>
+          );
+        }
+        return part;
+      });
+    } catch {
+      return sentence.original;
+    }
   };
 
   return (
@@ -228,8 +274,11 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
     setIsPlayingCurrent(true);
     try {
       await playFullStoryAudio(story, targetLanguage);
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+    } catch {
+      const sentences = Array.isArray(story.sentences) ? story.sentences : [];
+      if (sentences.length > 0) {
+        speakWithBrowser(sentences.map(s => s.original).join(". "), targetLanguage);
+      }
     } finally {
       setIsPlayingCurrent(false);
     }
@@ -249,25 +298,32 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
 
   if (loading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-500">
+      <div className="h-full flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-500 py-16">
         <div className="relative">
           <div className="w-16 h-16 border-4 border-indigo-100 dark:border-indigo-900 rounded-full"></div>
           <div className="w-16 h-16 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin absolute top-0"></div>
         </div>
-        <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Crafting your custom content...</p>
+        <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Criando sua lição personalizada com o Método Natural (i+1)...</p>
       </div>
     );
   }
 
-  if (!story) {
+  const sentences = Array.isArray(story?.sentences) ? story.sentences : [];
+
+  if (!story || sentences.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 py-16">
         <div className="bg-indigo-100 dark:bg-indigo-900/30 p-6 rounded-3xl text-indigo-600 dark:text-indigo-400"><Languages size={48} /></div>
-        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">No Active Lesson</h3>
-        <button onClick={onGenerate} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-4 px-10 rounded-2xl shadow-xl flex items-center gap-2"><Sparkles size={20} /> Generate My Story</button>
+        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Nenhuma Lição Ativa</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Gere uma nova história sob medida para continuar sua jornada de aprendizagem.</p>
+        <button onClick={onGenerate} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-4 px-10 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer mx-auto">
+          <Sparkles size={20} /> Gerar Nova Lição
+        </button>
       </div>
     );
   }
+
+  const newWords = Array.isArray(story?.new_words_to_add) ? story.new_words_to_add : [];
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -279,13 +335,13 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
               <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1"><RefreshCw size={10} /> Review Mode</span>
             )}
           </div>
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">{story.story_title}</h2>
+          <h2 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">{story.story_title || 'Lesson Story'}</h2>
         </div>
       </header>
 
       <div className="space-y-6">
-        {story.sentences.map((sentence) => (
-          <SentenceCard key={sentence.id} sentence={sentence} targetLanguage={targetLanguage} t_app={t} isReview={!!story.is_review} />
+        {sentences.map((sentence, idx) => (
+          <SentenceCard key={sentence.id || idx} sentence={sentence} targetLanguage={targetLanguage} t_app={t} isReview={!!story.is_review} />
         ))}
       </div>
 
@@ -294,21 +350,21 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
           <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-400">{story.is_review ? "Session Review" : "Lesson Review"}</h3>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button onClick={handlePlayFull} disabled={isPlayingCurrent} className="flex items-center gap-2 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-100 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50">
+            <button onClick={handlePlayFull} disabled={isPlayingCurrent} className="flex items-center gap-2 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-100 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50 cursor-pointer">
               {isPlayingCurrent ? <Loader2 size={20} className="animate-spin" /> : <PlayCircle size={20} />} Ouvir História Completa
             </button>
-            <button onClick={handleDownloadFull} disabled={isDownloading} className="flex items-center gap-2 bg-indigo-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-200 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50">
+            <button onClick={handleDownloadFull} disabled={isDownloading} className="flex items-center gap-2 bg-indigo-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-200 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50 cursor-pointer">
               {isDownloading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />} Baixar Áudio (.wav)
             </button>
           </div>
 
-          {!story.is_review && story.new_words_to_add.length > 0 && (
+          {!story.is_review && newWords.length > 0 && (
             <div className="flex flex-wrap justify-center gap-2">
-              {story.new_words_to_add.map((word, i) => (<span key={i} className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700">+ {word}</span>))}
+              {newWords.map((word, i) => (<span key={i} className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700">+ {word}</span>))}
             </div>
           )}
           
-          <button onClick={() => onComplete(story)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-12 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 w-full md:w-auto mx-auto">
+          <button onClick={() => onComplete(story)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-12 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 w-full md:w-auto mx-auto cursor-pointer">
             <CheckCircle2 size={24} /> {story.is_review ? "Review Completed" : "Lesson Completed"}
           </button>
         </div>

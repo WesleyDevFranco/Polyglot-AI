@@ -1,12 +1,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize } from './types';
-import { generateStory, generateReviewStory } from './services/geminiService';
+import { generateStory, generateReviewStory, normalizeStoryResponse } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import StudyArea from './components/StudyArea';
 import History from './components/History';
 import Settings from './components/Settings';
-import { BookOpen, LayoutDashboard, History as HistoryIcon, Settings as SettingsIcon, Download, Upload, Sun, Moon, RefreshCw } from 'lucide-react';
+import { VocabularyModal } from './components/VocabularyModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { calculateStreak } from './utils/streak';
+import { BookOpen, LayoutDashboard, History as HistoryIcon, Settings as SettingsIcon, Download, Upload, Sun, Moon, RefreshCw, Flame } from 'lucide-react';
 
 const STORAGE_KEY = 'polyglot_i1_data_v3';
 
@@ -23,7 +26,8 @@ const DEFAULT_PROFILE: UserProfile = {
   storySize: 'short',
   ancientGreekDialect: 'attic',
   ancientGreekFocus: 'general',
-  shakespeareanFocus: 'general'
+  shakespeareanFocus: 'general',
+  dailyGoal: 2
 };
 
 const translations = {
@@ -69,7 +73,43 @@ const translations = {
     dramaShakespearean: "Tragedy & Drama (Macbeth/Hamlet)",
     courtlyShakespearean: "Courtly & Romance (Sonnets/Comedies)",
     loadStarterVocab: "Load Starter Vocabulary",
-    starterVocabLoaded: "Starter vocabulary loaded for"
+    starterVocabLoaded: "Starter vocabulary loaded for",
+    streak: "Streak",
+    dayStreak: "Day Streak",
+    days: "days",
+    day: "day",
+    streakActive: "Streak Active Today!",
+    keepStreak: "Complete a lesson today to maintain your streak!",
+    streakBroken: "Complete a lesson today to start a new streak!",
+    searchVocab: "Search known words...",
+    filterWords: "Filter Words",
+    wordsLearned: "Learned Vocabulary",
+    showing: "Showing",
+    of: "of",
+    words: "words",
+    noWordsFound: "No matching words found.",
+    clearFilter: "Clear search",
+    sortAZ: "A-Z",
+    sortZA: "Z-A",
+    sortDefault: "Default",
+    rawEdit: "Raw CSV",
+    interactiveView: "Search & Filter",
+    browseVocab: "Browse Learned Words",
+    addWord: "Add Word",
+    newWordPlaceholder: "Add a new word to vocabulary...",
+    dailyGoal: "Daily Study Goal",
+    dailyGoalDesc: "Set target lessons to complete each day",
+    dailyGoalTarget: "lessons / day",
+    goalProgress: "Daily Goal",
+    goalAchieved: "Goal Achieved! 🎉",
+    goalLeft: "left today",
+    activityCalendar: "Study Activity Calendar",
+    activityCalendarDesc: "Daily study frequency over the last 30 days",
+    less: "Less",
+    more: "More",
+    noLessonsOnDay: "No lessons completed",
+    lessonCompleted: "lesson completed",
+    lessonsCompleted: "lessons completed"
   },
   pt: {
     dashboard: "Painel",
@@ -113,7 +153,43 @@ const translations = {
     dramaShakespearean: "Tragédia & Drama (Macbeth/Hamlet)",
     courtlyShakespearean: "Cortesão & Romance (Sonetos/Comédias)",
     loadStarterVocab: "Carregar Vocabulário Inicial",
-    starterVocabLoaded: "Vocabulário inicial carregado para"
+    starterVocabLoaded: "Vocabulário inicial carregado para",
+    streak: "Sequência",
+    dayStreak: "Dias de Sequência",
+    days: "dias",
+    day: "dia",
+    streakActive: "Sequência Ativa Hoje!",
+    keepStreak: "Complete uma lição hoje para manter sua sequência!",
+    streakBroken: "Complete uma lição hoje para iniciar uma nova sequência!",
+    searchVocab: "Buscar palavras conhecidas...",
+    filterWords: "Filtrar Palavras",
+    wordsLearned: "Vocabulário Aprendido",
+    showing: "Mostrando",
+    of: "de",
+    words: "palavras",
+    noWordsFound: "Nenhuma palavra encontrada.",
+    clearFilter: "Limpar busca",
+    sortAZ: "A-Z",
+    sortZA: "Z-A",
+    sortDefault: "Padrão",
+    rawEdit: "Lista CSV",
+    interactiveView: "Buscar & Filtrar",
+    browseVocab: "Explorar Palavras Aprendidas",
+    addWord: "Adicionar Palavra",
+    newWordPlaceholder: "Adicionar nova palavra ao vocabulário...",
+    dailyGoal: "Meta Diária de Estudo",
+    dailyGoalDesc: "Defina a quantidade de lições a concluir por dia",
+    dailyGoalTarget: "lições / dia",
+    goalProgress: "Meta Diária",
+    goalAchieved: "Meta Atingida! 🎉",
+    goalLeft: "restantes hoje",
+    activityCalendar: "Calendário de Atividades",
+    activityCalendarDesc: "Frequência diária de estudo nos últimos 30 dias",
+    less: "Menos",
+    more: "Mais",
+    noLessonsOnDay: "Nenhuma lição concluída",
+    lessonCompleted: "lição concluída",
+    lessonsCompleted: "lições concluídas"
   },
   es: {
     dashboard: "Panel",
@@ -157,7 +233,43 @@ const translations = {
     dramaShakespearean: "Tragedia y Drama (Macbeth/Hamlet)",
     courtlyShakespearean: "Cortesano y Romance (Sonetos/Comedias)",
     loadStarterVocab: "Cargar Vocabulario Inicial",
-    starterVocabLoaded: "Vocabulario inicial cargado para"
+    starterVocabLoaded: "Vocabulario inicial cargado para",
+    streak: "Racha",
+    dayStreak: "Días de Racha",
+    days: "días",
+    day: "día",
+    streakActive: "¡Racha Activa Hoy!",
+    keepStreak: "¡Completa una lección hoy para mantener tu racha!",
+    streakBroken: "¡Completa una lección hoy para iniciar una nueva racha!",
+    searchVocab: "Buscar palabras aprendidas...",
+    filterWords: "Filtrar Palabras",
+    wordsLearned: "Vocabulario Aprendido",
+    showing: "Mostrando",
+    of: "de",
+    words: "palabras",
+    noWordsFound: "No se encontraron palabras coincidentes.",
+    clearFilter: "Limpiar búsqueda",
+    sortAZ: "A-Z",
+    sortZA: "Z-A",
+    sortDefault: "Por defecto",
+    rawEdit: "Lista CSV",
+    interactiveView: "Buscar y Filtrar",
+    browseVocab: "Explorar Palabras Aprendidas",
+    addWord: "Agregar Palabra",
+    newWordPlaceholder: "Agregar nueva palabra al vocabulario...",
+    dailyGoal: "Meta Diaria de Estudio",
+    dailyGoalDesc: "Establece la cantidad de lecciones a completar por día",
+    dailyGoalTarget: "lecciones / día",
+    goalProgress: "Meta Diaria",
+    goalAchieved: "¡Meta Alcanzada! 🎉",
+    goalLeft: "restantes hoy",
+    activityCalendar: "Calendario de Actividad",
+    activityCalendarDesc: "Frecuencia diaria de estudio en los últimos 30 días",
+    less: "Menos",
+    more: "Más",
+    noLessonsOnDay: "Ninguna lección completada",
+    lessonCompleted: "lección completada",
+    lessonsCompleted: "lecciones completadas"
   }
 };
 
@@ -176,8 +288,10 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'study' | 'history' | 'settings'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [currentStory, setCurrentStory] = useState<StoryResponse | null>(null);
+  const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
 
   const t = useMemo(() => translations[profile.uiLanguage || 'en'] as any, [profile.uiLanguage]);
+  const streakInfo = useMemo(() => calculateStreak(history), [history]);
 
   useEffect(() => {
     const savedData = localStorage.getItem(STORAGE_KEY);
@@ -238,8 +352,10 @@ const App: React.FC = () => {
       );
       setCurrentStory(story);
       setActiveTab('study');
-    } catch (error) {
-      alert("Error generating story.");
+    } catch (error: any) {
+      console.error("Error generating story:", error);
+      const msg = error?.message || "Error generating story.";
+      alert(`Erro ao gerar lição: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -262,8 +378,10 @@ const App: React.FC = () => {
       );
       setCurrentStory(story);
       setActiveTab('study');
-    } catch (error) {
-      alert("Error generating review story.");
+    } catch (error: any) {
+      console.error("Error generating review story:", error);
+      const msg = error?.message || "Error generating review story.";
+      alert(`Erro ao gerar lição de revisão: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -271,15 +389,10 @@ const App: React.FC = () => {
 
   const handleCompleteLesson = (story: StoryResponse) => {
     const isReview = !!story.is_review;
-    const updatedKnownWords = Array.from(new Set([...profile.knownWords, ...story.new_words_to_add]));
+    const newWords = Array.isArray(story.new_words_to_add) ? story.new_words_to_add : [];
+    const updatedKnownWords = Array.from(new Set([...profile.knownWords, ...newWords]));
     const newLevel = calculateLevelFromVocab(updatedKnownWords.length);
     const levelChanged = newLevel !== profile.level;
-    
-    setProfile(prev => ({ 
-      ...prev, 
-      knownWords: updatedKnownWords,
-      level: newLevel
-    }));
     
     const newHistoryItem: HistoryItem = {
       ...story,
@@ -287,7 +400,18 @@ const App: React.FC = () => {
       completed: true
     };
     
-    setHistory(prev => [newHistoryItem, ...prev]);
+    const updatedHistory = [newHistoryItem, ...history];
+    const newStreakInfo = calculateStreak(updatedHistory);
+    
+    setProfile(prev => ({ 
+      ...prev, 
+      knownWords: updatedKnownWords,
+      level: newLevel,
+      streakCount: newStreakInfo.streak,
+      lastCompletedDate: newStreakInfo.lastCompletedDate || undefined
+    }));
+    
+    setHistory(updatedHistory);
     setCurrentStory(null);
     setActiveTab('dashboard');
     
@@ -299,7 +423,7 @@ const App: React.FC = () => {
   };
 
   const handleReopenStory = (story: StoryResponse) => {
-    setCurrentStory(story);
+    setCurrentStory(normalizeStoryResponse(story, !!story.is_review));
     setActiveTab('study');
   };
 
@@ -321,15 +445,53 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target?.result as string);
-        if (data.profile) {
-           const level = calculateLevelFromVocab(data.profile.knownWords.length);
-           setProfile({ ...DEFAULT_PROFILE, ...data.profile, level });
+        const raw = e.target?.result as string;
+        const data = JSON.parse(raw);
+        
+        // Support both { profile: {...}, history: [...] } and top-level profile objects
+        const rawProfile = data.profile || (data.knownWords || data.targetLanguage ? data : null);
+        
+        if (rawProfile) {
+          let rawWords = rawProfile.knownWords;
+          let cleanWords: string[] = [];
+          if (typeof rawWords === 'string') {
+            cleanWords = rawWords.split(/[,\n\r]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+          } else if (Array.isArray(rawWords)) {
+            cleanWords = rawWords.map((w: any) => {
+              if (typeof w === 'string') return w.trim().toLowerCase();
+              if (w && typeof w === 'object') return String(w.word || w.term || w.original || '').trim().toLowerCase();
+              return String(w || '').trim().toLowerCase();
+            }).filter((w: string) => w.length > 0 && w !== '[object object]');
+          }
+          cleanWords = Array.from(new Set(cleanWords));
+          if (cleanWords.length === 0) {
+            cleanWords = DEFAULT_PROFILE.knownWords;
+          }
+
+          const calculatedLevel = calculateLevelFromVocab(cleanWords.length);
+          const finalLevel = rawProfile.level || calculatedLevel;
+
+          setProfile(prev => ({
+            ...DEFAULT_PROFILE,
+            ...prev,
+            ...rawProfile,
+            knownWords: cleanWords,
+            level: finalLevel
+          }));
         }
-        if (data.history) setHistory(data.history);
+
+        if (Array.isArray(data.history)) {
+          setHistory(data.history);
+        }
+
         alert(t.importSuccess);
       } catch (err) {
+        console.error("Import error:", err);
         alert(t.invalidFile);
+      } finally {
+        if (event.target) {
+          event.target.value = '';
+        }
       }
     };
     reader.readAsText(file);
@@ -338,10 +500,18 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
       <nav className="w-full md:w-64 bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-6 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-2.5">
             <div className="bg-indigo-500 p-2 rounded-lg"><BookOpen size={24} className="text-white" /></div>
-            <h1 className="text-xl font-bold tracking-tight">Polyglot i+1</h1>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Polyglot i+1</h1>
+              {streakInfo.streak > 0 && (
+                <div className="flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                  <Flame size={12} className="fill-amber-500 text-amber-500" />
+                  <span>{streakInfo.streak} {streakInfo.streak === 1 ? (t.day || 'day') : (t.days || 'days')} {t.streak ? t.streak.toLowerCase() : 'streak'}</span>
+                </div>
+              )}
+            </div>
           </div>
           <button onClick={() => setProfile(p => ({...p, darkMode: !p.darkMode}))} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             {profile.darkMode ? <Sun size={20} /> : <Moon size={20} />}
@@ -374,17 +544,20 @@ const App: React.FC = () => {
             historyCount={history.length}
             t={t}
             history={history}
+            onOpenVocabModal={() => setIsVocabModalOpen(true)}
           />
         )}
         {activeTab === 'study' && (
-          <StudyArea 
-            story={currentStory} 
-            loading={loading}
-            onGenerate={handleGenerateStory}
-            onComplete={handleCompleteLesson}
-            targetLanguage={profile.targetLanguage}
-            t={t}
-          />
+          <ErrorBoundary onReset={() => setActiveTab('dashboard')}>
+            <StudyArea 
+              story={currentStory} 
+              loading={loading}
+              onGenerate={handleGenerateStory}
+              onComplete={handleCompleteLesson}
+              targetLanguage={profile.targetLanguage}
+              t={t}
+            />
+          </ErrorBoundary>
         )}
         {activeTab === 'history' && <History history={history} onReopen={handleReopenStory} targetLanguage={profile.targetLanguage} />}
         {activeTab === 'settings' && (
@@ -397,6 +570,19 @@ const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Dedicated Learned Vocabulary Explorer Modal */}
+      <VocabularyModal
+        isOpen={isVocabModalOpen}
+        onClose={() => setIsVocabModalOpen(false)}
+        words={profile.knownWords}
+        onChangeWords={(newWords) => {
+          const newLevel = calculateLevelFromVocab(newWords.length);
+          setProfile(prev => ({ ...prev, knownWords: newWords, level: newLevel }));
+        }}
+        targetLanguage={profile.targetLanguage}
+        t={t}
+      />
     </div>
   );
 };

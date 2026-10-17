@@ -2,47 +2,95 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { CEFRLevel, StoryResponse, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from "../types";
 
-const API_KEY = process.env.API_KEY || "";
+const getApiKey = () => process.env.API_KEY || process.env.GEMINI_API_KEY || "";
 
-const getLanguageConfig = (
-  targetLanguage: string, 
-  ancientGreekDialect?: AncientGreekDialect, 
+const sanitizeKnownWords = (words: any): string[] => {
+  if (!words) return [];
+  let list: any[] = [];
+  if (typeof words === 'string') {
+    list = words.split(',');
+  } else if (Array.isArray(words)) {
+    list = words;
+  }
+  return Array.from(new Set(
+    list
+      .map(w => {
+        if (typeof w === 'string') return w.trim().toLowerCase();
+        if (w && typeof w === 'object') {
+          return String(w.word || w.term || w.original || '').trim().toLowerCase();
+        }
+        return String(w || '').trim().toLowerCase();
+      })
+      .filter(w => w.length > 0 && w !== '[object object]')
+  ));
+};
+
+const parseJsonResponse = (responseText?: string): any => {
+  if (!responseText) {
+    throw new Error("No response text received from AI.");
+  }
+  let text = responseText.trim();
+  if (text.startsWith("```")) {
+    text = text.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    throw new Error("Failed to parse valid JSON from AI response.");
+  }
+};
+
+export interface LanguageConfig {
+  langDisplay: string;
+  focusInstruction: string;
+}
+
+export const getLanguageConfig = (
+  targetLanguage: string,
+  ancientGreekDialect?: AncientGreekDialect,
   ancientGreekFocus?: AncientGreekFocus,
   shakespeareanFocus?: ShakespeareanFocus
-) => {
-  let langDisplay = targetLanguage;
-  let focusInstruction = "";
-
+): LanguageConfig => {
   if (targetLanguage === 'Ancient Greek') {
-    const dialect = ancientGreekDialect === 'attic' ? 'Attic' : 'Koine';
-    langDisplay = `Ancient Greek (${dialect} dialect)`;
-    
-    if (ancientGreekDialect === 'attic' && ancientGreekFocus === 'philosophical') {
-      focusInstruction = `
-        DOMAIN SPECIALIZATION: Focus specifically on the vocabulary and rhetorical styles found in the Platonic and Aristotelian corpus. 
-        Prioritize terms, concepts, and idioms frequent in classical Greek philosophy (e.g., metaphysics, ethics, logic). 
-      `;
-    }
-  } else if (targetLanguage === 'Shakespearean English') {
-    langDisplay = 'Shakespearean English (Early Modern English / Elizabethan & Jacobean English)';
-    focusInstruction = `
-      DOMAIN SPECIALIZATION: Early Modern English / Shakespearean English (circa 1590-1615).
-      - Style & Syntax: Employ authentic Shakespearean grammar, Early Modern second-person pronouns (thou/thee/thy/thine/ye), verb conjugations (-est, -eth, art, dost, hath, doth, wilt, shalt, canst), archaic prepositions/adverbs (wherefore, whither, thither, hither, betwixt, ere, anon, perchance, methinks, forsooth, prithee, hark, fie), and poetic inversion.
-      - Tone: Rhythmic, dramatic, evocative, and poetic phrasing reminiscent of William Shakespeare's plays and sonnets.
-      - Definitions & Explanations: Explain new Shakespearean words clearly, providing both their modern meaning and Elizabethan context.
-    `;
-
-    if (shakespeareanFocus === 'drama') {
-      focusInstruction += `
-      - DRAMATIC / TRAGIC FOCUS: Channel the tragic and dramatic intensity of Macbeth, Hamlet, King Lear, and Othello. Emphasize themes of fate, honor, ambition, intrigue, mortality, and intense human passion.
-      `;
-    } else if (shakespeareanFocus === 'courtly') {
-      focusInstruction += `
-      - COURTLY / ROMANCE FOCUS: Channel the witty romance and courtly lyricism of Shakespeare's Sonnets, Twelfth Night, Much Ado About Nothing, and A Midsummer Night's Dream. Emphasize wit, wordplay, romantic devotion, beauty, and court etiquette.
-      `;
-    }
+    const isKoine = ancientGreekDialect === 'koine';
+    const dialectName = isKoine ? 'Koine Greek (Hellenistic / New Testament)' : 'Classical Attic Greek';
+    const focusDetail = ancientGreekFocus === 'philosophical'
+      ? 'Focus on classical philosophical, ethical, and dialectic themes (Platonic and Aristotelian vocabulary).'
+      : 'Focus on narrative Attic prose, daily life, history, and classical storytelling.';
+    return {
+      langDisplay: `Ancient Greek (${dialectName})`,
+      focusInstruction: `DIALECT & REGISTER: Write in authentic ${dialectName}. ${focusDetail} Use polytonic accents and classical Greek grammar principles.`
+    };
   }
-  return { langDisplay, focusInstruction };
+
+  if (targetLanguage === 'Shakespearean English') {
+    let styleDetail = 'Classic Elizabethan drama and dialogue (thou/thee/thy/thine, -eth verbs, authentic 16th/17th-century stage English).';
+    if (shakespeareanFocus === 'drama') {
+      styleDetail = 'High dramatic tragedy and soliloquy tone reminiscent of Hamlet and Macbeth, noble vocabulary, intense theatrical gravitas.';
+    } else if (shakespeareanFocus === 'courtly') {
+      styleDetail = 'Courtly romance, wit, poetic sonnet cadence and playful dialogue reminiscent of Twelfth Night and Much Ado About Nothing.';
+    }
+    return {
+      langDisplay: 'Shakespearean English (Early Modern English, Elizabethan / Jacobean)',
+      focusInstruction: `REGISTER & STYLE: Write in authentic Early Modern English (${styleDetail}). Use appropriate archaic pronouns (thou, thee, thy, thine, ye), conjugations (art, doth, hath, canst), and period-accurate idioms without sacrificing comprehension under i+1.`
+    };
+  }
+
+  if (targetLanguage === 'Latin') {
+    return {
+      langDisplay: 'Classical Latin',
+      focusInstruction: 'REGISTER: Use authentic Classical Latin syntax, standard vocabulary, and appropriate case agreements.'
+    };
+  }
+
+  return {
+    langDisplay: targetLanguage,
+    focusInstruction: `Ensure natural, authentic, idiomatic expressions appropriate for contemporary ${targetLanguage} at the specified CEFR level.`
+  };
 };
 
 export const generateStory = async (
@@ -55,10 +103,15 @@ export const generateStory = async (
   ancientGreekFocus?: AncientGreekFocus,
   shakespeareanFocus?: ShakespeareanFocus
 ): Promise<StoryResponse> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const sizeMap = { short: "5 to 10", standard: "exactly 10", medium: "10 to 15", long: "15 to 25" };
   const sentenceCount = sizeMap[storySize] || "5 to 10";
   const { langDisplay, focusInstruction } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
+
+  const cleanWords = sanitizeKnownWords(knownWords);
+  // Cap vocabulary window for prompt efficiency if excessively large
+  const wordsForPrompt = cleanWords.length > 800 ? cleanWords.slice(-800) : cleanWords;
+  const wordsDisplay = wordsForPrompt.length > 0 ? wordsForPrompt.join(", ") : "hello, world, is, the, in, to, and";
 
   const prompt = `
     Act as a Natural Language Acquisition Specialist. 
@@ -69,7 +122,7 @@ export const generateStory = async (
     
     ${focusInstruction}
     
-    KNOWN WORDS: [${knownWords.join(", ")}]
+    KNOWN WORDS (${cleanWords.length} total words): [${wordsDisplay}]
     
     RULES:
     1. i+1: Use known words for 95% of text.
@@ -80,7 +133,7 @@ export const generateStory = async (
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.8-flash",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -101,17 +154,20 @@ export const generateStory = async (
                 new_element: { type: Type.STRING },
                 explanation: { type: Type.STRING },
                 definition_target: { type: Type.STRING }
-              }
+              },
+              required: ["id", "original", "translation"]
             }
           },
           estimated_vocab_count: { type: Type.STRING },
           new_words_to_add: { type: Type.ARRAY, items: { type: Type.STRING } }
-        }
+        },
+        required: ["story_title", "sentences", "new_words_to_add"]
       }
     }
   });
 
-  return { ...JSON.parse(response.text), is_review: false };
+  const parsed = parseJsonResponse(response.text);
+  return normalizeStoryResponse(parsed, false, level);
 };
 
 export const generateReviewStory = async (
@@ -122,8 +178,11 @@ export const generateReviewStory = async (
   ancientGreekFocus?: AncientGreekFocus,
   shakespeareanFocus?: ShakespeareanFocus
 ): Promise<StoryResponse> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const { langDisplay, focusInstruction } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
+
+  const cleanWords = sanitizeKnownWords(knownWords);
+  const wordsForPrompt = cleanWords.length > 800 ? cleanWords.slice(-800) : cleanWords;
 
   const prompt = `
     Act as a Polyglot Instructor. Generate a REVIEW story.
@@ -134,7 +193,7 @@ export const generateReviewStory = async (
     
     GOAL: Create a long, complex and coherent story using ONLY words from the known vocabulary list provided below. 
     
-    KNOWN VOCABULARY: [${knownWords.join(", ")}]
+    KNOWN VOCABULARY: [${wordsForPrompt.join(", ")}]
     
     RULES:
     1. USE ONLY KNOWN WORDS. Do not introduce new vocabulary.
@@ -144,7 +203,7 @@ export const generateReviewStory = async (
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.8-flash",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -165,15 +224,97 @@ export const generateReviewStory = async (
                 new_element: { type: Type.STRING },
                 explanation: { type: Type.STRING },
                 definition_target: { type: Type.STRING }
-              }
+              },
+              required: ["id", "original", "translation"]
             }
           },
           estimated_vocab_count: { type: Type.STRING },
           new_words_to_add: { type: Type.ARRAY, items: { type: Type.STRING } }
-        }
+        },
+        required: ["story_title", "sentences"]
       }
     }
   });
 
-  return { ...JSON.parse(response.text), is_review: true };
+  const parsed = parseJsonResponse(response.text);
+  return normalizeStoryResponse(parsed, true);
 };
+
+export const normalizeStoryResponse = (data: any, isReview = false, fallbackLevel = 'A1'): StoryResponse => {
+  if (!data || typeof data !== 'object') {
+    return {
+      story_title: "Generated Story",
+      level_target: fallbackLevel as any,
+      sentences: [],
+      estimated_vocab_count: "0",
+      new_words_to_add: [],
+      is_review: isReview
+    };
+  }
+
+  const source = data.story && typeof data.story === 'object' ? data.story : data;
+  const story_title = String(source.story_title || source.title || data.story_title || data.title || "Lesson Story");
+  const level_target = source.level_target || data.level_target || fallbackLevel;
+  const estimated_vocab_count = String(source.estimated_vocab_count || data.estimated_vocab_count || "0");
+
+  let rawSentences = source.sentences || data.sentences || source.sentence_list || data.sentence_list;
+  if (!Array.isArray(rawSentences)) {
+    if (typeof source.text === 'string' || typeof data.text === 'string') {
+      const text = source.text || data.text;
+      rawSentences = text.split(/(?<=[.?!])\s+/).filter(Boolean).map((s: string, idx: number) => ({
+        id: idx + 1,
+        original: s,
+        translation: '',
+        new_element: '',
+        explanation: ''
+      }));
+    } else {
+      rawSentences = [];
+    }
+  }
+
+  const sentences = (rawSentences as any[]).map((s: any, idx: number) => {
+    if (typeof s === 'string') {
+      return {
+        id: idx + 1,
+        original: s,
+        translation: '',
+        phonetic: '',
+        new_element: '',
+        explanation: '',
+        definition_target: ''
+      };
+    }
+    return {
+      id: typeof s?.id === 'number' ? s.id : idx + 1,
+      original: String(s?.original || s?.sentence || s?.text || '').trim(),
+      translation: String(s?.translation || s?.meaning || '').trim(),
+      phonetic: String(s?.phonetic || s?.ipa || '').trim(),
+      new_element: String(s?.new_element || s?.new_word || s?.target_word || '').trim(),
+      explanation: String(s?.explanation || '').trim(),
+      definition_target: String(s?.definition_target || s?.definition || '').trim()
+    };
+  }).filter((s: any) => s.original.length > 0);
+
+  let rawNewWords = source.new_words_to_add || data.new_words_to_add;
+  let new_words_to_add: string[] = [];
+  if (Array.isArray(rawNewWords)) {
+    new_words_to_add = rawNewWords.map((w: any) => String(w || '').trim().toLowerCase()).filter(Boolean);
+  } else if (typeof rawNewWords === 'string') {
+    new_words_to_add = rawNewWords.split(/[,;\s]+/).map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+  } else if (!isReview) {
+    new_words_to_add = Array.from(new Set(
+      sentences.map((s: any) => s.new_element).filter(Boolean).map((w: string) => w.toLowerCase())
+    ));
+  }
+
+  return {
+    story_title,
+    level_target,
+    sentences,
+    estimated_vocab_count,
+    new_words_to_add,
+    is_review: isReview
+  };
+};
+

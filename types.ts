@@ -39,6 +39,9 @@ export interface UserProfile {
   ancientGreekDialect?: AncientGreekDialect;
   ancientGreekFocus?: AncientGreekFocus;
   shakespeareanFocus?: ShakespeareanFocus;
+  streakCount?: number;
+  lastCompletedDate?: string;
+  dailyGoal?: number;
 }
 
 export interface HistoryItem extends StoryResponse {
