@@ -14,7 +14,9 @@ This license is not legal advice and does not create an attorney-client relation
 ## Credit
 
 **Name of this software:** Polyglot AI
+
 **Project home:** https://github.com/ludoviciphilip/Polyglot-AI
+
 **Original copyright holder(s):** Luis Felipe de Almeida Vieira
 
 ## Purpose
