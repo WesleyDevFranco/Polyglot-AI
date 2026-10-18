@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize, SRSCard, SRSBackType } from './types';
 import { generateStory, generateReviewStory, normalizeStoryResponse } from './services/geminiService';
 import Dashboard from './components/Dashboard';
@@ -255,6 +255,8 @@ const translations = {
     clear: "Clear",
     show: "Show",
     hide: "Hide",
+    saveAction: "Save",
+    loadAction: "Load",
     srsReview: "Anki SRS Review",
     srsTitle: "Spaced Repetition (SRS / Anki)",
     srsSubtitle: "The forgetting curve and spaced repetition to lock every i+1 sentence into long-term memory.",
@@ -524,6 +526,8 @@ const translations = {
     clear: "Limpar",
     show: "Mostrar",
     hide: "Ocultar",
+    saveAction: "Salvar",
+    loadAction: "Carregar",
     srsReview: "Revisão Anki",
     srsTitle: "Revisão Espaçada (SRS / Anki)",
     srsSubtitle: "Curva do esquecimento e repetição espaçada para fixar cada frase i+1 na memória de longo prazo.",
@@ -793,6 +797,8 @@ const translations = {
     clear: "Borrar",
     show: "Mostrar",
     hide: "Ocultar",
+    saveAction: "Guardar",
+    loadAction: "Cargar",
     srsReview: "Repaso Anki",
     srsTitle: "Repaso Espaciado (SRS / Anki)",
     srsSubtitle: "Curva del olvido y repetición espaciada para fijar cada frase i+1 en la memoria a largo plazo.",
@@ -1062,6 +1068,8 @@ const translations = {
     clear: "Effacer",
     show: "Afficher",
     hide: "Masquer",
+    saveAction: "Sauvegarder",
+    loadAction: "Charger",
     srsReview: "Révision Anki",
     srsTitle: "Répétition Espacée (SRS / Anki)",
     srsSubtitle: "Courbe de l'oubli et répétition espacée pour ancrer chaque phrase i+1 dans la mémoire à long terme.",
@@ -1331,6 +1339,8 @@ const translations = {
     clear: "Löschen",
     show: "Anzeigen",
     hide: "Verbergen",
+    saveAction: "Speichern",
+    loadAction: "Laden",
     srsReview: "Anki-Wiederholung",
     srsTitle: "Spaced Repetition (SRS / Anki)",
     srsSubtitle: "Vergessenskurve und verteilte Wiederholung, um jeden i+1-Satz dauerhaft im Langzeitgedächtnis zu verankern.",
@@ -1600,6 +1610,8 @@ const translations = {
     clear: "Cancella",
     show: "Mostra",
     hide: "Nascondi",
+    saveAction: "Salva",
+    loadAction: "Carica",
     srsReview: "Ripasso Anki",
     srsTitle: "Ripetizione Spaziata (SRS / Anki)",
     srsSubtitle: "Curva dell'oblio e ripetizione spaziata per consolidare ogni frase i+1 nella memoria a lungo termine.",
@@ -1677,6 +1689,7 @@ const App: React.FC = () => {
   const [isGlobalApiKeyTutorialOpen, setIsGlobalApiKeyTutorialOpen] = useState(false);
   const [isGlobalJsonTutorialOpen, setIsGlobalJsonTutorialOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const sidebarFileInputRef = useRef<HTMLInputElement>(null);
 
   const t = useMemo(() => translations[profile.uiLanguage || 'en'] as any, [profile.uiLanguage]);
   const streakInfo = useMemo(() => calculateStreak(history), [history]);
@@ -2090,6 +2103,49 @@ const App: React.FC = () => {
           >
             <SettingsIcon size={20} /> {t.settings}
           </button>
+
+          {/* Quick Save & Load Data Buttons (Alias for Settings Export/Import) */}
+          <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-2 flex items-center justify-between">
+              <span>{t.backupSystem || "Backup Local (JSON)"}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleExport();
+                  setIsMobileMenuOpen(false);
+                }}
+                title={t.exportBackupTitle || "Salvar / Exportar dados em arquivo JSON"}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 group"
+              >
+                <Download size={15} className="text-indigo-600 dark:text-indigo-400 group-hover:translate-y-0.5 transition-transform" />
+                <span>{t.saveAction || "Salvar"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  sidebarFileInputRef.current?.click();
+                  setIsMobileMenuOpen(false);
+                }}
+                title={t.importBackupTitle || "Carregar / Importar dados de arquivo JSON"}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 group"
+              >
+                <Upload size={15} className="text-emerald-600 dark:text-emerald-400 group-hover:-translate-y-0.5 transition-transform" />
+                <span>{t.loadAction || "Carregar"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Hidden File Input for Sidebar Carregar / Import */}
+          <input
+            type="file"
+            ref={sidebarFileInputRef}
+            onChange={handleImport}
+            accept=".json"
+            className="hidden"
+          />
 
           {/* Quick Tutorial Links in Navigation */}
           <div className="pt-4 mt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">

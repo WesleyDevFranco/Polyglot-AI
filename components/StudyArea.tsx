@@ -95,7 +95,7 @@ const getFullStoryAudioData = async (story: StoryResponse, targetLanguage: strin
     : (process.env.GEMINI_API_KEY || process.env.API_KEY || "");
   const sentences = Array.isArray(story?.sentences) ? story.sentences : [];
   if (sentences.length === 0) throw new Error("A história não possui frases.");
-  const fullText = sentences.map(s => s.original).join(" ");
+  const fullText = sentences.map(s => s.original).filter(Boolean).join(" ").trim();
   
   if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
     throw new Error("API key not configured");
@@ -103,8 +103,8 @@ const getFullStoryAudioData = async (story: StoryResponse, targetLanguage: strin
 
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-3.8-flash-tts",
-    contents: [{ parts: [{ text: `Read the following story naturally in ${targetLanguage}: ${fullText}` }] }],
+    model: "gemini-3.8-flash-lite-tts",
+    contents: [{ parts: [{ text: fullText }] }],
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
@@ -146,7 +146,13 @@ export const downloadFullStoryAudio = async (story: StoryResponse, targetLanguag
   URL.revokeObjectURL(url);
 };
 
-const SentenceCard: React.FC<{ sentence: Sentence; targetLanguage: string; t_app: any; isReview: boolean }> = ({ sentence, targetLanguage, t_app, isReview }) => {
+const SentenceCard: React.FC<{ 
+  sentence: Sentence; 
+  targetLanguage: string; 
+  t_app: any; 
+  isReview: boolean;
+  apiKey?: string;
+}> = ({ sentence, targetLanguage, t_app, isReview, apiKey: customApiKey }) => {
   const [showTranslation, setShowTranslation] = useState(false);
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
 
@@ -154,15 +160,18 @@ const SentenceCard: React.FC<{ sentence: Sentence; targetLanguage: string; t_app
     if (isProcessingAudio || !sentence?.original) return;
     setIsProcessingAudio(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+      const apiKey = (customApiKey && customApiKey.trim().length > 0)
+        ? customApiKey.trim()
+        : (process.env.GEMINI_API_KEY || process.env.API_KEY || "");
       if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
         speakWithBrowser(sentence.original, targetLanguage);
         return;
       }
       const ai = new GoogleGenAI({ apiKey });
+      const textToSpeak = sentence.original.trim();
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash-tts",
-        contents: [{ parts: [{ text: `Read the following sentence out loud in ${targetLanguage}: ${sentence.original}` }] }],
+        model: "gemini-3.8-flash-lite-tts",
+        contents: [{ parts: [{ text: textToSpeak }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -344,7 +353,14 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
 
       <div className="space-y-6">
         {sentences.map((sentence, idx) => (
-          <SentenceCard key={sentence.id || idx} sentence={sentence} targetLanguage={targetLanguage} t_app={t} isReview={!!story.is_review} />
+          <SentenceCard 
+            key={sentence.id || idx} 
+            sentence={sentence} 
+            targetLanguage={targetLanguage} 
+            t_app={t} 
+            isReview={!!story.is_review} 
+            apiKey={apiKey}
+          />
         ))}
       </div>
 
