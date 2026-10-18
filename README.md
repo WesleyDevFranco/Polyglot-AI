@@ -1,3 +1,7 @@
+The code is free, so you can implement it yourself if you want to.
+But, you can just use my implementation of the Polyglot AI here: https://polyglotai.ai.studio/
+
+## Screenshots
 <img width="1913" height="881" alt="image" src="https://github.com/user-attachments/assets/aeb3ad61-d9f0-4e30-b081-9cb4cdfad998" />
 <img width="1896" height="883" alt="image" src="https://github.com/user-attachments/assets/8f31ecf3-0e90-46bd-9aeb-95db0e9c0fab" />
 <img width="1902" height="877" alt="image" src="https://github.com/user-attachments/assets/c95f0e49-dba8-420b-8ecf-c81b7e95fc25" />
