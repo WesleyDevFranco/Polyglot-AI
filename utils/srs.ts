@@ -275,3 +275,96 @@ export const estimateRetentionRate = (cards: SRSCard[]): number => {
   const rate = Math.round((successWeight / totalWeight) * 100);
   return Math.max(60, Math.min(99, rate));
 };
+
+export interface RetentionProgressPoint {
+  date: string;
+  fullDate: string;
+  dayNumber: number;
+  timestamp: number;
+  learning: number;
+  mastered: number;
+  totalActive: number;
+  graduatedToday: number;
+  retentionRate: number;
+}
+
+/**
+ * Generates a 30-day time series tracking cards moving from Learning to Mastered
+ */
+export const generate30DayRetentionData = (
+  cards: SRSCard[],
+  targetLanguage?: string
+): RetentionProgressPoint[] => {
+  const filtered = cards.filter(c => !targetLanguage || !c.targetLanguage || c.targetLanguage === targetLanguage);
+  const now = Date.now();
+  const ONE_DAY_MS = 86400000;
+  
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  const endOfTodayMs = endOfToday.getTime();
+
+  const dataPoints: RetentionProgressPoint[] = [];
+
+  for (let i = 29; i >= 0; i--) {
+    const dayEndMs = endOfTodayMs - (i * ONE_DAY_MS);
+    const dayStartMs = dayEndMs - ONE_DAY_MS + 1;
+    const dateObj = new Date(dayEndMs);
+
+    const dateLabel = dateObj.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const fullDateLabel = dateObj.toLocaleDateString(undefined, { 
+      day: 'numeric', 
+      month: 'long',
+      year: 'numeric'
+    });
+
+    let learningCount = 0;
+    let masteredCount = 0;
+    let graduatedToday = 0;
+
+    filtered.forEach(card => {
+      const cardCreated = card.storyTimestamp || (now - 25 * ONE_DAY_MS);
+      
+      // Check if card existed on this day
+      if (cardCreated <= dayEndMs) {
+        const isMasteredNow = card.state === 'mastered';
+        
+        // Determine graduation timestamp
+        let graduationTime: number | null = null;
+        if (card.masteredAt) {
+          graduationTime = card.masteredAt;
+        } else if (isMasteredNow) {
+          // If mastered but no masteredAt recorded yet, infer from lastReviewed or story creation
+          graduationTime = card.lastReviewed || (cardCreated + 14 * ONE_DAY_MS);
+          if (graduationTime > now) graduationTime = now;
+        }
+
+        if (graduationTime !== null && graduationTime <= dayEndMs) {
+          masteredCount++;
+          if (graduationTime >= dayStartMs && graduationTime <= dayEndMs) {
+            graduatedToday++;
+          }
+        } else {
+          // Active in learning or review
+          learningCount++;
+        }
+      }
+    });
+
+    const totalActive = learningCount + masteredCount;
+    const retentionRate = totalActive > 0 ? Math.round((masteredCount / totalActive) * 100) : 0;
+
+    dataPoints.push({
+      date: dateLabel,
+      fullDate: fullDateLabel,
+      dayNumber: 30 - i,
+      timestamp: dayEndMs,
+      learning: learningCount,
+      mastered: masteredCount,
+      totalActive,
+      graduatedToday,
+      retentionRate
+    });
+  }
+
+  return dataPoints;
+};

@@ -70,6 +70,8 @@ export interface SRSCard {
   interval: number; // in days
   dueDate: number; // timestamp (ms)
   lastReviewed?: number; // timestamp (ms)
+  masteredAt?: number; // timestamp (ms) when card graduated to mastered
+  learningAt?: number; // timestamp (ms) when card started learning
 }
 
 export interface SRSStats {

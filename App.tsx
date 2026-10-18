@@ -1,20 +1,23 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize } from './types';
+import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize, SRSCard, SRSBackType } from './types';
 import { generateStory, generateReviewStory, normalizeStoryResponse } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import StudyArea from './components/StudyArea';
 import History from './components/History';
 import Settings from './components/Settings';
+import { SRSReviewArea } from './components/SRSReviewArea';
 import { VocabularyModal } from './components/VocabularyModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
 import { ApiKeyTutorialModal } from './components/ApiKeyTutorialModal';
 import { JsonBackupTutorialModal } from './components/JsonBackupTutorialModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { calculateStreak } from './utils/streak';
-import { BookOpen, LayoutDashboard, History as HistoryIcon, Settings as SettingsIcon, Download, Upload, Sun, Moon, RefreshCw, Flame, Key, FileJson, HelpCircle } from 'lucide-react';
+import { syncCardsFromHistory, computeSRSStats } from './utils/srs';
+import { BookOpen, LayoutDashboard, History as HistoryIcon, Settings as SettingsIcon, Download, Upload, Sun, Moon, RefreshCw, Flame, Key, FileJson, HelpCircle, Layers, Menu, X } from 'lucide-react';
 
 const STORAGE_KEY = 'polyglot_i1_data_v3';
+const SRS_STORAGE_KEY = 'polyglot_srs_cards_v1';
 
 const DEFAULT_PROFILE: UserProfile = {
   name: 'User',
@@ -30,7 +33,9 @@ const DEFAULT_PROFILE: UserProfile = {
   ancientGreekDialect: 'attic',
   ancientGreekFocus: 'general',
   shakespeareanFocus: 'general',
-  dailyGoal: 2
+  dailyGoal: 2,
+  srsBackType: 'full_translation',
+  srsDailyGoal: 20
 };
 
 const translations = {
@@ -249,7 +254,59 @@ const translations = {
     lessonNeedsKey: "API Key Required to Generate Lesson",
     clear: "Clear",
     show: "Show",
-    hide: "Hide"
+    hide: "Hide",
+    srsReview: "Anki SRS Review",
+    srsTitle: "Spaced Repetition (SRS / Anki)",
+    srsSubtitle: "The forgetting curve and spaced repetition to lock every i+1 sentence into long-term memory.",
+    srsCardBackSetting: "Card Back Configuration",
+    srsSelectBackMode: "What would you like to see on the card back?",
+    srsBackFull: "Full Sentence Translation",
+    srsBackFullDesc: "Displays the complete sentence translation in your native language.",
+    srsBackElement: "i+1 Element Translation Only",
+    srsBackElementDesc: "Exact focus on the new vocabulary or unfamiliar element.",
+    srsBackDefinition: "Target Language Definition",
+    srsBackDefinitionDesc: "Pure immersion: definition in the language being learned.",
+    srsCardFront: "FRONT (i+1 Sentence)",
+    srsCardBack: "BACK",
+    srsShowAnswer: "Show Answer",
+    srsPressSpace: "Press [Space] to flip card",
+    srsElementBadge: "i+1 Element",
+    srsFullTranslationLabel: "Full Sentence Translation",
+    srsElementTranslationLabel: "i+1 Element Translation",
+    srsTargetDefinitionLabel: "Target Language Definition",
+    srsHideOtherDetails: "Hide other details",
+    srsShowOtherDetails: "Show other modes (full translation / extra definition)",
+    srsRatePrompt: "How well did you remember? (Rate for the Forgetting Curve):",
+    srsAgain: "Again",
+    srsHard: "Hard",
+    srsGood: "Good",
+    srsEasy: "Easy",
+    srsShortcutsHint: "Keyboard shortcuts: [1] Again • [2] Hard • [3] Good • [4] Easy",
+    srsDueToday: "Due Today",
+    srsNewCards: "New (i+1)",
+    srsLearningCards: "In Learning",
+    srsMasteredCards: "Mastered",
+    srsStartReviewBtn: "Start Today's Review",
+    srsCramBtn: "Practice Free (Cram)",
+    srsGenerateNewStory: "Generate New i+1 Story",
+    srsForgettingCurveTitle: "Ebbinghaus Forgetting Curve",
+    srsForgettingCurveSubtitle: "How the SM-2 algorithm transforms fleeting exposure into permanent retention.",
+    srsDeckExplorerTitle: "Completed Stories Deck",
+    srsDeckExplorerSubtitle: "Every completed lesson automatically feeds your deck with i+1 flashcards.",
+    srsNoCardsYet: "Your Anki Deck is Empty",
+    srsNoCardsDesc: "As soon as you complete your first story in Polyglot i+1, all sentences and new elements will be automatically added here for spaced repetition!",
+    srsGenerateFirstStory: "Create My First Story",
+    srsSessionDoneTitle: "Review Session Complete!",
+    srsSessionDoneDesc: "Outstanding work! You intercepted the forgetting curve and strengthened your neural pathways for long-term mastery.",
+    srsReviewedCards: "Cards reviewed",
+    srsRememberedCount: "Remembered",
+    srsAgainCount: "To reinforce",
+    srsReturnToDeck: "Return to Deck",
+    srsCramMore: "Practice More (Cram)",
+    srsFinishSession: "Exit",
+    srsConfirmQuit: "Do you want to end the review session early?",
+    srsSettingsTitle: "Spaced Repetition (SRS / Anki)",
+    srsSettingsSubtitle: "Configure how the back of each i+1 flashcard is displayed during spaced repetition reviews."
   },
   pt: {
     dashboard: "Painel",
@@ -466,7 +523,59 @@ const translations = {
     lessonNeedsKey: "Chave Necessária para Gerar Lição",
     clear: "Limpar",
     show: "Mostrar",
-    hide: "Ocultar"
+    hide: "Ocultar",
+    srsReview: "Revisão Anki",
+    srsTitle: "Revisão Espaçada (SRS / Anki)",
+    srsSubtitle: "Curva do esquecimento e repetição espaçada para fixar cada frase i+1 na memória de longo prazo.",
+    srsCardBackSetting: "Configuração do Verso",
+    srsSelectBackMode: "O que você deseja ver no verso do card?",
+    srsBackFull: "Tradução Completa da Frase",
+    srsBackFullDesc: "Exibe a tradução completa em seu idioma nativo.",
+    srsBackElement: "Tradução Apenas do Elemento i+1",
+    srsBackElementDesc: "Foco exato no novo vocábulo ou elemento desconhecido.",
+    srsBackDefinition: "Definição do Elemento no Idioma Alvo",
+    srsBackDefinitionDesc: "Imersão pura: definição explicada na própria língua de estudo.",
+    srsCardFront: "FRENTE (Frase i+1)",
+    srsCardBack: "VERSO",
+    srsShowAnswer: "Mostrar Resposta",
+    srsPressSpace: "Pressione [Espaço] para virar o card",
+    srsElementBadge: "Elemento i+1",
+    srsFullTranslationLabel: "Tradução Completa da Frase",
+    srsElementTranslationLabel: "Tradução do Elemento i+1",
+    srsTargetDefinitionLabel: "Definição Imersiva no Idioma Alvo",
+    srsHideOtherDetails: "Ocultar outros detalhes",
+    srsShowOtherDetails: "Ver outros modos (tradução / definição extra)",
+    srsRatePrompt: "Como foi a sua lembrança? (Classifique para a Curva do Esquecimento):",
+    srsAgain: "Errei",
+    srsHard: "Difícil",
+    srsGood: "Bom",
+    srsEasy: "Fácil",
+    srsShortcutsHint: "Atalhos no teclado: [1] Errei • [2] Difícil • [3] Bom • [4] Fácil",
+    srsDueToday: "Devidos Hoje",
+    srsNewCards: "Novos (i+1)",
+    srsLearningCards: "Em Aprendizado",
+    srsMasteredCards: "Dominados",
+    srsStartReviewBtn: "Iniciar Revisão de Hoje",
+    srsCramBtn: "Praticar Modo Livre",
+    srsGenerateNewStory: "Gerar Nova História i+1",
+    srsForgettingCurveTitle: "A Curva do Esquecimento de Ebbinghaus",
+    srsForgettingCurveSubtitle: "Como o algoritmo SM-2 transforma aprendizado efêmero em retenção permanente.",
+    srsDeckExplorerTitle: "Deck de Histórias Concluídas",
+    srsDeckExplorerSubtitle: "Cada lição concluída alimenta automaticamente seu deck com frases i+1.",
+    srsNoCardsYet: "Seu Deck do Anki está vazio",
+    srsNoCardsDesc: "Assim que você completar sua primeira história no Polyglot i+1, todas as frases e elementos novos serão automaticamente adicionados aqui para repetição espaçada!",
+    srsGenerateFirstStory: "Criar Minha Primeira História",
+    srsSessionDoneTitle: "Sessão de Revisão Concluída!",
+    srsSessionDoneDesc: "Excelente trabalho! Você desafiou a curva do esquecimento e reforçou suas conexões neurais para o longo prazo.",
+    srsReviewedCards: "Cards revisados",
+    srsRememberedCount: "Lembrados",
+    srsAgainCount: "Para reforçar",
+    srsReturnToDeck: "Voltar ao Deck",
+    srsCramMore: "Praticar Mais (Modo Livre)",
+    srsFinishSession: "Sair",
+    srsConfirmQuit: "Deseja encerrar a sessão de revisão antecipadamente?",
+    srsSettingsTitle: "Revisão Espaçada (SRS / Anki)",
+    srsSettingsSubtitle: "Configure como o verso de cada flashcard i+1 é apresentado durante as revisões de repetição espaçada."
   },
   es: {
     dashboard: "Panel",
@@ -683,7 +792,59 @@ const translations = {
     lessonNeedsKey: "Clave Requerida para Generar Lección",
     clear: "Borrar",
     show: "Mostrar",
-    hide: "Ocultar"
+    hide: "Ocultar",
+    srsReview: "Repaso Anki",
+    srsTitle: "Repaso Espaciado (SRS / Anki)",
+    srsSubtitle: "Curva del olvido y repetición espaciada para fijar cada frase i+1 en la memoria a largo plazo.",
+    srsCardBackSetting: "Configuración del Reverso",
+    srsSelectBackMode: "¿Qué deseas ver en el reverso de la tarjeta?",
+    srsBackFull: "Traducción Completa de la Frase",
+    srsBackFullDesc: "Muestra la traducción completa en tu idioma nativo.",
+    srsBackElement: "Traducción Solo del Elemento i+1",
+    srsBackElementDesc: "Enfoque exacto en la palabra o elemento nuevo.",
+    srsBackDefinition: "Definición en el Idioma de Estudio",
+    srsBackDefinitionDesc: "Inmersión pura: definición explicada en el propio idioma objetivo.",
+    srsCardFront: "FRENTE (Frase i+1)",
+    srsCardBack: "REVERSO",
+    srsShowAnswer: "Mostrar Respuesta",
+    srsPressSpace: "Pulsa [Espacio] para girar la tarjeta",
+    srsElementBadge: "Elemento i+1",
+    srsFullTranslationLabel: "Traducción Completa de la Frase",
+    srsElementTranslationLabel: "Traducción del Elemento i+1",
+    srsTargetDefinitionLabel: "Definición Inmersiva en el Idioma Objetivo",
+    srsHideOtherDetails: "Ocultar otros detalles",
+    srsShowOtherDetails: "Ver otros modos (traducción / definición extra)",
+    srsRatePrompt: "¿Cómo fue tu recuerdo? (Clasifica para la Curva del Olvido):",
+    srsAgain: "Fallé",
+    srsHard: "Difícil",
+    srsGood: "Bien",
+    srsEasy: "Fácil",
+    srsShortcutsHint: "Atajos de teclado: [1] Fallé • [2] Difícil • [3] Bien • [4] Fácil",
+    srsDueToday: "Pendientes Hoy",
+    srsNewCards: "Nuevas (i+1)",
+    srsLearningCards: "En Aprendizaje",
+    srsMasteredCards: "Dominadas",
+    srsStartReviewBtn: "Iniciar Repaso de Hoy",
+    srsCramBtn: "Practicar Modo Libre",
+    srsGenerateNewStory: "Generar Nueva Historia i+1",
+    srsForgettingCurveTitle: "La Curva del Olvido de Ebbinghaus",
+    srsForgettingCurveSubtitle: "Cómo el algoritmo SM-2 convierte el estudio efímero en memoria permanente.",
+    srsDeckExplorerTitle: "Mazo de Historias Completadas",
+    srsDeckExplorerSubtitle: "Cada lección completada nutre automáticamente tu mazo con tarjetas i+1.",
+    srsNoCardsYet: "Tu Mazo de Anki está vacío",
+    srsNoCardsDesc: "¡En cuanto completes tu primera historia en Polyglot i+1, todas las frases y elementos nuevos se añadirán aquí para repaso espaciado!",
+    srsGenerateFirstStory: "Crear Mi Primera Historia",
+    srsSessionDoneTitle: "¡Sesión de Repaso Completada!",
+    srsSessionDoneDesc: "¡Excelente trabajo! Has desafiado la curva del olvido y reforzado tus conexiones neuronales a largo plazo.",
+    srsReviewedCards: "Tarjetas repasadas",
+    srsRememberedCount: "Recordadas",
+    srsAgainCount: "A reforzar",
+    srsReturnToDeck: "Volver al Mazo",
+    srsCramMore: "Practicar Más (Modo Libre)",
+    srsFinishSession: "Salir",
+    srsConfirmQuit: "¿Deseas finalizar la sesión de repaso antes de tiempo?",
+    srsSettingsTitle: "Repaso Espaciado (SRS / Anki)",
+    srsSettingsSubtitle: "Configura cómo se muestra el reverso de cada tarjeta i+1 durante las sesiones de repaso espaciado."
   },
   fr: {
     dashboard: "Tableau de bord",
@@ -900,7 +1061,59 @@ const translations = {
     lessonNeedsKey: "Clé API Requise pour Générer une Leçon",
     clear: "Effacer",
     show: "Afficher",
-    hide: "Masquer"
+    hide: "Masquer",
+    srsReview: "Révision Anki",
+    srsTitle: "Répétition Espacée (SRS / Anki)",
+    srsSubtitle: "Courbe de l'oubli et répétition espacée pour ancrer chaque phrase i+1 dans la mémoire à long terme.",
+    srsCardBackSetting: "Configuration du Verso",
+    srsSelectBackMode: "Que souhaitez-vous voir au verso de la carte ?",
+    srsBackFull: "Traduction Complète de la Phrase",
+    srsBackFullDesc: "Affiche la traduction intégrale dans votre langue maternelle.",
+    srsBackElement: "Traduction de l'Élément i+1 Uniquement",
+    srsBackElementDesc: "Focus précis sur le nouveau mot ou élément inconnu.",
+    srsBackDefinition: "Définition dans la Langue Cible",
+    srsBackDefinitionDesc: "Immersion totale : définition rédigée dans la langue apprise.",
+    srsCardFront: "RECTO (Phrase i+1)",
+    srsCardBack: "VERSO",
+    srsShowAnswer: "Afficher la Réponse",
+    srsPressSpace: "Appuyez sur [Espace] pour retourner la carte",
+    srsElementBadge: "Élément i+1",
+    srsFullTranslationLabel: "Traduction Complète de la Phrase",
+    srsElementTranslationLabel: "Traduction de l'Élément i+1",
+    srsTargetDefinitionLabel: "Définition Immersive dans la Langue Cible",
+    srsHideOtherDetails: "Masquer les autres détails",
+    srsShowOtherDetails: "Voir d'autres modes (traduction / définition extra)",
+    srsRatePrompt: "Comment était votre souvenir ? (Évaluez pour la Courbe de l'Oubli) :",
+    srsAgain: "À revoir",
+    srsHard: "Difficile",
+    srsGood: "Correct",
+    srsEasy: "Facile",
+    srsShortcutsHint: "Raccourcis clavier : [1] À revoir • [2] Difficile • [3] Correct • [4] Facile",
+    srsDueToday: "À réviser aujourd'hui",
+    srsNewCards: "Nouvelles (i+1)",
+    srsLearningCards: "En Apprentissage",
+    srsMasteredCards: "Maîtrisées",
+    srsStartReviewBtn: "Commencer la Révision du Jour",
+    srsCramBtn: "Pratiquer en Mode Libre",
+    srsGenerateNewStory: "Générer une Nouvelle Histoire i+1",
+    srsForgettingCurveTitle: "La Courbe de l'Oubli d'Ebbinghaus",
+    srsForgettingCurveSubtitle: "Comment l'algorithme SM-2 transforme l'exposition éphémère en mémoire permanente.",
+    srsDeckExplorerTitle: "Paquet d'Histoires Terminées",
+    srsDeckExplorerSubtitle: "Chaque leçon terminée enrichit automatiquement votre paquet de cartes i+1.",
+    srsNoCardsYet: "Votre paquet Anki est vide",
+    srsNoCardsDesc: "Dès que vous terminerez votre première histoire dans Polyglot i+1, toutes les phrases seront automatiquement ajoutées ici pour la répétition espacée !",
+    srsGenerateFirstStory: "Créer Ma Première Histoire",
+    srsSessionDoneTitle: "Session de Révision Terminée !",
+    srsSessionDoneDesc: "Excellent travail ! Vous avez déjoué la courbe de l'oubli et consolidé vos réseaux neuronaux pour le long terme.",
+    srsReviewedCards: "Cartes révisées",
+    srsRememberedCount: "Mémorisées",
+    srsAgainCount: "À renforcer",
+    srsReturnToDeck: "Retour au Paquet",
+    srsCramMore: "Pratiquer Plus (Mode Libre)",
+    srsFinishSession: "Quitter",
+    srsConfirmQuit: "Voulez-vous quitter la session de révision prématurément ?",
+    srsSettingsTitle: "Répétition Espacée (SRS / Anki)",
+    srsSettingsSubtitle: "Configurez l'affichage au verso de chaque carte i+1 pendant les sessions de répétition espacée."
   },
   de: {
     dashboard: "Dashboard",
@@ -1117,7 +1330,59 @@ const translations = {
     lessonNeedsKey: "API-Schlüssel für Lektion erforderlich",
     clear: "Löschen",
     show: "Anzeigen",
-    hide: "Verbergen"
+    hide: "Verbergen",
+    srsReview: "Anki-Wiederholung",
+    srsTitle: "Spaced Repetition (SRS / Anki)",
+    srsSubtitle: "Vergessenskurve und verteilte Wiederholung, um jeden i+1-Satz dauerhaft im Langzeitgedächtnis zu verankern.",
+    srsCardBackSetting: "Rückseiten-Konfiguration",
+    srsSelectBackMode: "Was soll auf der Kartenrückseite angezeigt werden?",
+    srsBackFull: "Vollständige Satzübersetzung",
+    srsBackFullDesc: "Zeigt die komplette Übersetzung in Ihrer Muttersprache an.",
+    srsBackElement: "Nur Übersetzung des i+1-Elements",
+    srsBackElementDesc: "Exakter Fokus auf das neue Wort oder die unbekannte Struktur.",
+    srsBackDefinition: "Definition in der Zielsprache",
+    srsBackDefinitionDesc: "Reine Immersion: Definition direkt in der gelernten Sprache.",
+    srsCardFront: "VORDERSEITE (i+1-Satz)",
+    srsCardBack: "RÜCKSEITE",
+    srsShowAnswer: "Antwort Anzeigen",
+    srsPressSpace: "Drücken Sie [Leertaste] zum Umdrehen",
+    srsElementBadge: "i+1-Element",
+    srsFullTranslationLabel: "Vollständige Satzübersetzung",
+    srsElementTranslationLabel: "Übersetzung des i+1-Elements",
+    srsTargetDefinitionLabel: "Immersive Definition in der Zielsprache",
+    srsHideOtherDetails: "Weitere Details ausblenden",
+    srsShowOtherDetails: "Andere Modi anzeigen (Übersetzung / Definition)",
+    srsRatePrompt: "Wie gut haben Sie sich erinnert? (Bewerten für die Vergessenskurve):",
+    srsAgain: "Nochmal",
+    srsHard: "Schwer",
+    srsGood: "Gut",
+    srsEasy: "Einfach",
+    srsShortcutsHint: "Tastaturkürzel: [1] Nochmal • [2] Schwer • [3] Gut • [4] Einfach",
+    srsDueToday: "Heute fällig",
+    srsNewCards: "Neu (i+1)",
+    srsLearningCards: "Im Lernprozess",
+    srsMasteredCards: "Gemeistert",
+    srsStartReviewBtn: "Heutige Wiederholung starten",
+    srsCramBtn: "Freier Übungsmodus",
+    srsGenerateNewStory: "Neue i+1-Geschichte erstellen",
+    srsForgettingCurveTitle: "Die Ebbinghaus-Vergessenskurve",
+    srsForgettingCurveSubtitle: "Wie der SM-2-Algorithmus flüchtige Eindrücke in dauerhaftes Wissen verwandelt.",
+    srsDeckExplorerTitle: "Stapel abgeschlossener Geschichten",
+    srsDeckExplorerSubtitle: "Jede fertige Lektion speist automatisch i+1-Lernkarten in Ihren Stapel ein.",
+    srsNoCardsYet: "Ihr Anki-Stapel ist leer",
+    srsNoCardsDesc: "Sobald Sie Ihre erste Geschichte in Polyglot i+1 abschließen, werden alle Sätze automatisch hier zur verteilten Wiederholung hinzugefügt!",
+    srsGenerateFirstStory: "Erste Geschichte erstellen",
+    srsSessionDoneTitle: "Wiederholungssitzung Abgeschlossen!",
+    srsSessionDoneDesc: "Hervorragende Arbeit! Sie haben der Vergessenskurve getrotzt und Ihre neuronalen Bahnen langfristig gefestigt.",
+    srsReviewedCards: "Karten wiederholt",
+    srsRememberedCount: "Erinnert",
+    srsAgainCount: "Zur Festigung",
+    srsReturnToDeck: "Zurück zum Stapel",
+    srsCramMore: "Weiter üben (Freier Modus)",
+    srsFinishSession: "Beenden",
+    srsConfirmQuit: "Möchten Sie die Wiederholungssitzung vorzeitig beenden?",
+    srsSettingsTitle: "Spaced Repetition (SRS / Anki)",
+    srsSettingsSubtitle: "Konfigurieren Sie, wie die Rückseite jeder i+1-Lernkarte bei der verteilten Wiederholung dargestellt wird."
   },
   it: {
     dashboard: "Dashboard",
@@ -1334,7 +1599,59 @@ const translations = {
     lessonNeedsKey: "Chiave API Richiesta per Generare Lezione",
     clear: "Cancella",
     show: "Mostra",
-    hide: "Nascondi"
+    hide: "Nascondi",
+    srsReview: "Ripasso Anki",
+    srsTitle: "Ripetizione Spaziata (SRS / Anki)",
+    srsSubtitle: "Curva dell'oblio e ripetizione spaziata per consolidare ogni frase i+1 nella memoria a lungo termine.",
+    srsCardBackSetting: "Configurazione del Retro",
+    srsSelectBackMode: "Cosa desideri visualizzare sul retro della carta?",
+    srsBackFull: "Traduzione Completa della Frase",
+    srsBackFullDesc: "Mostra la traduzione integrale nella tua lingua madre.",
+    srsBackElement: "Traduzione Solo dell'Elemento i+1",
+    srsBackElementDesc: "Focus mirato sul nuovo vocabolo o elemento da apprendere.",
+    srsBackDefinition: "Definizione nella Lingua di Studio",
+    srsBackDefinitionDesc: "Immersione pura: definizione spiegata direttamente nella lingua d'arrivo.",
+    srsCardFront: "FRONTE (Frase i+1)",
+    srsCardBack: "RETRO",
+    srsShowAnswer: "Mostra Risposta",
+    srsPressSpace: "Premi [Spazio] per girare la carta",
+    srsElementBadge: "Elemento i+1",
+    srsFullTranslationLabel: "Traduzione Completa della Frase",
+    srsElementTranslationLabel: "Traduzione dell'Elemento i+1",
+    srsTargetDefinitionLabel: "Definizione Immersiva nella Lingua di Studio",
+    srsHideOtherDetails: "Nascondi altri dettagli",
+    srsShowOtherDetails: "Vedi altre modalità (traduzione / definizione extra)",
+    srsRatePrompt: "Come valuti il tuo ricordo? (Classifica per la Curva dell'Oblio):",
+    srsAgain: "Ripeti",
+    srsHard: "Difficile",
+    srsGood: "Bene",
+    srsEasy: "Facile",
+    srsShortcutsHint: "Scorciatoie: [1] Ripeti • [2] Difficile • [3] Bene • [4] Facile",
+    srsDueToday: "In Scadenza Oggi",
+    srsNewCards: "Nuove (i+1)",
+    srsLearningCards: "In Apprendimento",
+    srsMasteredCards: "Padroneggiate",
+    srsStartReviewBtn: "Inizia Ripasso di Oggi",
+    srsCramBtn: "Esercizio Libero",
+    srsGenerateNewStory: "Genera Nuova Storia i+1",
+    srsForgettingCurveTitle: "La Curva dell'Oblio di Ebbinghaus",
+    srsForgettingCurveSubtitle: "Come l'algoritmo SM-2 trasforma lo studio fugace in memoria indelebile.",
+    srsDeckExplorerTitle: "Mazzo delle Storie Completate",
+    srsDeckExplorerSubtitle: "Ogni lezione completata inserisce automaticamente carte i+1 nel tuo mazzo.",
+    srsNoCardsYet: "Il tuo mazzo Anki è vuoto",
+    srsNoCardsDesc: "Non appena completerai la tua prima storia su Polyglot i+1, tutte le frasi verranno aggiunte qui per la ripetizione spaziata!",
+    srsGenerateFirstStory: "Crea la Mia Prima Storia",
+    srsSessionDoneTitle: "Sessione di Ripasso Conclusa!",
+    srsSessionDoneDesc: "Ottimo lavoro! Hai sfidato la curva dell'oblio e rinforzato le tue reti neurali a lungo termine.",
+    srsReviewedCards: "Carte ripassate",
+    srsRememberedCount: "Ricordate",
+    srsAgainCount: "Da rinforzare",
+    srsReturnToDeck: "Torna al Mazzo",
+    srsCramMore: "Esercitati Ancora (Modalità Libera)",
+    srsFinishSession: "Esci",
+    srsConfirmQuit: "Vuoi interrompere la sessione di ripasso in anticipo?",
+    srsSettingsTitle: "Ripetizione Spaziata (SRS / Anki)",
+    srsSettingsSubtitle: "Configura la visualizzazione del retro di ciascuna carta i+1 durante i ripassi spaziati."
   }
 };
 
@@ -1350,7 +1667,8 @@ const calculateLevelFromVocab = (count: number): CEFRLevel => {
 const App: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'study' | 'history' | 'settings'>('dashboard');
+  const [srsCards, setSrsCards] = useState<SRSCard[]>([]);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'study' | 'srs' | 'history' | 'settings'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [currentStory, setCurrentStory] = useState<StoryResponse | null>(null);
   const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
@@ -1358,9 +1676,11 @@ const App: React.FC = () => {
   const [apiKeyPromptAction, setApiKeyPromptAction] = useState<'story' | 'review'>('story');
   const [isGlobalApiKeyTutorialOpen, setIsGlobalApiKeyTutorialOpen] = useState(false);
   const [isGlobalJsonTutorialOpen, setIsGlobalJsonTutorialOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const t = useMemo(() => translations[profile.uiLanguage || 'en'] as any, [profile.uiLanguage]);
   const streakInfo = useMemo(() => calculateStreak(history), [history]);
+  const srsStats = useMemo(() => computeSRSStats(srsCards, profile.targetLanguage), [srsCards, profile.targetLanguage]);
 
   useEffect(() => {
     const savedData = localStorage.getItem(STORAGE_KEY);
@@ -1373,7 +1693,26 @@ const App: React.FC = () => {
         console.error("Failed to parse stored data", e);
       }
     }
+
+    const savedSrs = localStorage.getItem(SRS_STORAGE_KEY);
+    if (savedSrs) {
+      try {
+        const parsed = JSON.parse(savedSrs);
+        if (Array.isArray(parsed)) {
+          setSrsCards(parsed);
+        }
+      } catch (e) {
+        console.error("Failed to parse stored SRS cards", e);
+      }
+    }
   }, []);
+
+  // Sync cards from history into SRS deck whenever history or target language changes
+  useEffect(() => {
+    if (history.length > 0) {
+      setSrsCards(prev => syncCardsFromHistory(history, prev, profile.targetLanguage, profile.nativeLanguage));
+    }
+  }, [history, profile.targetLanguage, profile.nativeLanguage]);
 
   useEffect(() => {
     if (!profile.notificationsEnabled) return;
@@ -1404,6 +1743,19 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, history }));
   }, [profile, history]);
+
+  useEffect(() => {
+    localStorage.setItem(SRS_STORAGE_KEY, JSON.stringify(srsCards));
+  }, [srsCards]);
+
+  const handleUpdateSrsCard = (updatedCard: SRSCard) => {
+    setSrsCards(prev => prev.map(c => c.id === updatedCard.id ? updatedCard : c));
+  };
+
+  const handleUpdateSrsCardsBatch = (updatedCards: SRSCard[]) => {
+    const map = new Map(updatedCards.map(c => [c.id, c]));
+    setSrsCards(prev => prev.map(c => map.get(c.id) || c));
+  };
 
   const handleGenerateStory = async () => {
     const hasKey = Boolean(profile.apiKey && profile.apiKey.trim().length > 0);
@@ -1543,6 +1895,10 @@ const App: React.FC = () => {
     const updatedHistory = [newHistoryItem, ...history];
     const newStreakInfo = calculateStreak(updatedHistory);
     
+    // Automatically feed new sentences into Anki SRS deck
+    const newCards = syncCardsFromHistory([newHistoryItem], srsCards, profile.targetLanguage, profile.nativeLanguage);
+    setSrsCards(newCards);
+    
     setProfile(prev => ({ 
       ...prev, 
       knownWords: updatedKnownWords,
@@ -1568,7 +1924,7 @@ const App: React.FC = () => {
   };
 
   const handleExport = () => {
-    const data = JSON.stringify({ profile, history }, null, 2);
+    const data = JSON.stringify({ profile, history, srsCards }, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1625,6 +1981,10 @@ const App: React.FC = () => {
           setHistory(data.history);
         }
 
+        if (Array.isArray(data.srsCards)) {
+          setSrsCards(data.srsCards);
+        }
+
         alert(t.importSuccess);
       } catch (err) {
         console.error("Import error:", err);
@@ -1638,14 +1998,20 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  const navigateToTab = (tab: 'dashboard' | 'study' | 'srs' | 'history' | 'settings') => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-      <nav className="w-full md:w-64 bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-6 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between mb-8">
+      <nav className="w-full md:w-64 bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-4 md:p-6 flex flex-col shrink-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 transition-all">
+        {/* Top Header Bar: Logo, App Name, Streak, Theme Toggle & Mobile Hamburger */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="bg-indigo-500 p-2 rounded-lg"><BookOpen size={24} className="text-white" /></div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Polyglot i+1</h1>
+              <h1 className="text-xl font-bold tracking-tight">Polyglot AI</h1>
               {streakInfo.streak > 0 && (
                 <div className="flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
                   <Flame size={12} className="fill-amber-500 text-amber-500" />
@@ -1654,44 +2020,102 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          <button onClick={() => setProfile(p => ({...p, darkMode: !p.darkMode}))} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
-            {profile.darkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
+
+          <div className="flex items-center gap-1.5">
+            <button 
+              type="button"
+              onClick={() => setProfile(p => ({...p, darkMode: !p.darkMode}))} 
+              aria-label="Alternar tema escuro/claro"
+              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer text-slate-600 dark:text-slate-300"
+            >
+              {profile.darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            {/* Mobile Hamburger Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(prev => !prev)}
+              aria-label="Abrir ou fechar menu"
+              aria-expanded={isMobileMenuOpen}
+              className="md:hidden p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer relative"
+            >
+              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {srsStats.dueToday > 0 && !isMobileMenuOpen && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white dark:ring-slate-900" />
+              )}
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2 flex-grow">
-          <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+        {/* Navigation Items (Always visible on desktop md:flex, collapsible on mobile) */}
+        <div className={`${isMobileMenuOpen ? 'flex' : 'hidden'} md:flex flex-col gap-2 flex-grow mt-5 md:mt-8 animate-in fade-in slide-in-from-top-2 duration-150`}>
+          <button 
+            type="button"
+            onClick={() => navigateToTab('dashboard')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
             <LayoutDashboard size={20} /> {t.dashboard}
           </button>
-          <button onClick={() => setActiveTab('study')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'study' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+          <button 
+            type="button"
+            onClick={() => navigateToTab('study')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'study' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
             <BookOpen size={20} /> {t.studyArea}
           </button>
-          <button onClick={() => setActiveTab('history')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+          <button 
+            type="button"
+            onClick={() => navigateToTab('srs')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'srs' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
+            <Layers size={20} />
+            <span className="flex-1 text-left">{t.srsReview || "Revisão Anki"}</span>
+            {srsStats.dueToday > 0 && (
+              <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${activeTab === 'srs' ? 'bg-white text-indigo-700' : 'bg-amber-500 text-white'}`}>
+                {srsStats.dueToday}
+              </span>
+            )}
+          </button>
+          <button 
+            type="button"
+            onClick={() => navigateToTab('history')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
             <HistoryIcon size={20} /> {t.history}
           </button>
-          <button onClick={() => setActiveTab('settings')} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+          <button 
+            type="button"
+            onClick={() => navigateToTab('settings')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
             <SettingsIcon size={20} /> {t.settings}
           </button>
-        </div>
 
-        {/* Quick Tutorial Links in Navigation */}
-        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
-          <button
-            type="button"
-            onClick={() => setIsGlobalApiKeyTutorialOpen(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl transition-all cursor-pointer text-left"
-          >
-            <Key size={15} className="shrink-0 text-amber-500" />
-            <span className="truncate">{t.howToGetFreeKey || "Chave API Gratuita"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsGlobalJsonTutorialOpen(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl transition-all cursor-pointer text-left"
-          >
-            <FileJson size={15} className="shrink-0 text-emerald-500" />
-            <span className="truncate">{t.backupRestoreGuideBtn || "Salvar & Restaurar"}</span>
-          </button>
+          {/* Quick Tutorial Links in Navigation */}
+          <div className="pt-4 mt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setIsGlobalApiKeyTutorialOpen(true);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl transition-all cursor-pointer text-left"
+            >
+              <Key size={15} className="shrink-0 text-amber-500" />
+              <span className="truncate">{t.howToGetFreeKey || "Chave API Gratuita"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setIsGlobalJsonTutorialOpen(true);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl transition-all cursor-pointer text-left"
+            >
+              <FileJson size={15} className="shrink-0 text-emerald-500" />
+              <span className="truncate">{t.backupRestoreGuideBtn || "Salvar & Restaurar"}</span>
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -1706,6 +2130,8 @@ const App: React.FC = () => {
             t={t}
             history={history}
             onOpenVocabModal={() => setIsVocabModalOpen(true)}
+            srsDueCount={srsStats.dueToday}
+            onNavigateToSRS={() => setActiveTab('srs')}
           />
         )}
         {activeTab === 'study' && (
@@ -1720,6 +2146,22 @@ const App: React.FC = () => {
               apiKey={profile.apiKey}
             />
           </ErrorBoundary>
+        )}
+        {activeTab === 'srs' && (
+          <SRSReviewArea
+            cards={srsCards}
+            onUpdateCard={handleUpdateSrsCard}
+            onUpdateCardsBatch={handleUpdateSrsCardsBatch}
+            targetLanguage={profile.targetLanguage}
+            nativeLanguage={profile.nativeLanguage}
+            srsBackType={profile.srsBackType || 'full_translation'}
+            onChangeBackType={(newType) => setProfile(prev => ({ ...prev, srsBackType: newType }))}
+            onNavigateToStudy={() => {
+              setActiveTab('study');
+              handleGenerateStory();
+            }}
+            t={t}
+          />
         )}
         {activeTab === 'history' && <History history={history} onReopen={handleReopenStory} targetLanguage={profile.targetLanguage} t={t} />}
         {activeTab === 'settings' && (

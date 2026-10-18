@@ -31,6 +31,7 @@ import {
   estimateRetentionRate,
   formatIntervalLabel 
 } from '../utils/srs';
+import { SRSRetentionChart } from './SRSRetentionChart';
 
 interface SRSReviewAreaProps {
   cards: SRSCard[];
@@ -156,6 +157,7 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
     if (!currentCard) return;
 
     const result = calculateNextInterval(currentCard, rating);
+    const now = Date.now();
     const updatedCard: SRSCard = {
       ...currentCard,
       interval: result.interval,
@@ -164,7 +166,9 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
       lapses: result.lapses,
       state: result.state,
       dueDate: result.dueDate,
-      lastReviewed: Date.now()
+      lastReviewed: now,
+      learningAt: currentCard.learningAt || (result.state === 'learning' || result.state === 'review' ? now : undefined),
+      masteredAt: result.state === 'mastered' ? (currentCard.masteredAt || now) : undefined
     };
 
     onUpdateCard(updatedCard);
@@ -866,6 +870,13 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Retention Progress Chart (Learning -> Mastered over 30 days) */}
+          <SRSRetentionChart 
+            cards={languageCards} 
+            targetLanguage={targetLanguage} 
+            t={t} 
+          />
 
           {/* Ebbinghaus Forgetting Curve Educational Visualizer */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">

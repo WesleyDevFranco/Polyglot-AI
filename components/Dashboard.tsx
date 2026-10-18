@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { UserProfile, HistoryItem } from '../types';
-import { Award, Zap, BookOpen, ChevronRight, Loader2, Info, TrendingUp, Activity, Calendar, RefreshCw, Flame, Search, CheckCircle2, Target, Sparkles, Check } from 'lucide-react';
+import { Award, Zap, BookOpen, ChevronRight, Loader2, Info, TrendingUp, Activity, Calendar, RefreshCw, Flame, Search, CheckCircle2, Target, Sparkles, Check, Layers } from 'lucide-react';
 import { calculateStreak, getLocalDateKey } from '../utils/streak';
 import { ProgressChart } from './ProgressChart';
 import { ActivityCalendar } from './ActivityCalendar';
@@ -15,9 +15,11 @@ interface DashboardProps {
   t: any;
   history: HistoryItem[];
   onOpenVocabModal?: () => void;
+  srsDueCount?: number;
+  onNavigateToSRS?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, loading, historyCount, t, history, onOpenVocabModal }) => {
+const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, loading, historyCount, t, history, onOpenVocabModal, srsDueCount = 0, onNavigateToSRS }) => {
   const thresholds = [
     { level: 'A1', min: 0, max: 500 },
     { level: 'A2', min: 500, max: 1000 },
@@ -146,11 +148,27 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
           </div>
           <p className="text-slate-500 dark:text-slate-400">{t.ready}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {onNavigateToSRS && (
+            <button
+              type="button"
+              onClick={onNavigateToSRS}
+              className="bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold py-3 px-5 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              title={t.srsTitle || "Revisão Espaçada (Anki)"}
+            >
+              <Layers size={18} className="text-indigo-600 dark:text-indigo-400" />
+              <span>{t.srsReview || "Revisão Anki"}</span>
+              {srsDueCount > 0 && (
+                <span className="px-2 py-0.5 text-xs font-bold bg-amber-500 text-white rounded-full">
+                  {srsDueCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={onReview}
             disabled={loading}
-            className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-200 dark:shadow-none transition-all flex items-center justify-center gap-2"
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-200 dark:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
             {t.review}
@@ -158,7 +176,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, lo
           <button
             onClick={onGenerate}
             disabled={loading}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : <Zap size={20} />}
             {t.generate}
