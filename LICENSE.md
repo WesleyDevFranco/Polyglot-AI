@@ -2,8 +2,7 @@
 
 **© 2026 <https://mutualist.dev>**
 
-**Short ID: MutuaL-1.3** or **MutuaL-1.3-only**  
-*(A Short ID that does not end in “-only” allows upgrades. **MutuaL-1.3-or-later** means the same as **MutuaL-1.3**. You may remove this parenthetical after you set the Short ID.)*  
+**Short ID: MutuaL-1.3**
 “Mutualist License” and “MutuaL” should be seen as the same name everywhere one of them is used after this.
 
 Everyone is allowed to share copies of this license, as long as the text stays exactly as written, apart from the Credit block and the Short ID, which you complete. Changes to formatting, such as fonts, spacing, or layout, are fine. Clearly marked excerpts, quotations, and commentary are also fine. You may not change the terms of this license and still call it the Mutualist License. You are free to use this text as a starting point for your own license under a different name. If you do, credit back to us is appreciated, but not required.
