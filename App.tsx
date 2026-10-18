@@ -257,6 +257,10 @@ const translations = {
     hide: "Hide",
     saveAction: "Save",
     loadAction: "Load",
+    reopenedStoryBadge: "History / Completed",
+    reopenedStoryTitle: "Previously Studied Story",
+    reopenedStoryNotice: "This story is already saved in your history. You can reread the text and listen to the audio without modifying your vocabulary progress.",
+    closeStory: "Close Story",
     srsReview: "Anki SRS Review",
     srsTitle: "Spaced Repetition (SRS / Anki)",
     srsSubtitle: "The forgetting curve and spaced repetition to lock every i+1 sentence into long-term memory.",
@@ -528,6 +532,10 @@ const translations = {
     hide: "Ocultar",
     saveAction: "Salvar",
     loadAction: "Carregar",
+    reopenedStoryBadge: "Histórico / Concluída",
+    reopenedStoryTitle: "História Já Estudada",
+    reopenedStoryNotice: "Esta história já foi concluída e está salva no seu histórico. Você pode reler o texto e ouvir os áudios livremente.",
+    closeStory: "Fechar História",
     srsReview: "Revisão Anki",
     srsTitle: "Revisão Espaçada (SRS / Anki)",
     srsSubtitle: "Curva do esquecimento e repetição espaçada para fixar cada frase i+1 na memória de longo prazo.",
@@ -799,6 +807,10 @@ const translations = {
     hide: "Ocultar",
     saveAction: "Guardar",
     loadAction: "Cargar",
+    reopenedStoryBadge: "Historial / Completada",
+    reopenedStoryTitle: "Historia Ya Estudiada",
+    reopenedStoryNotice: "Esta historia ya fue completada y está guardada en tu historial. Puedes releer el texto y escuchar los audios libremente.",
+    closeStory: "Cerrar Historia",
     srsReview: "Repaso Anki",
     srsTitle: "Repaso Espaciado (SRS / Anki)",
     srsSubtitle: "Curva del olvido y repetición espaciada para fijar cada frase i+1 en la memoria a largo plazo.",
@@ -1070,6 +1082,10 @@ const translations = {
     hide: "Masquer",
     saveAction: "Sauvegarder",
     loadAction: "Charger",
+    reopenedStoryBadge: "Historique / Complété",
+    reopenedStoryTitle: "Histoire Déjà Étudiée",
+    reopenedStoryNotice: "Cette histoire est déjà enregistrée dans votre historique. Vous pouvez relire le texte et écouter les audios librement.",
+    closeStory: "Fermer l'Histoire",
     srsReview: "Révision Anki",
     srsTitle: "Répétition Espacée (SRS / Anki)",
     srsSubtitle: "Courbe de l'oubli et répétition espacée pour ancrer chaque phrase i+1 dans la mémoire à long terme.",
@@ -1341,6 +1357,10 @@ const translations = {
     hide: "Verbergen",
     saveAction: "Speichern",
     loadAction: "Laden",
+    reopenedStoryBadge: "Verlauf / Abgeschlossen",
+    reopenedStoryTitle: "Bereits Gelernte Geschichte",
+    reopenedStoryNotice: "Diese Geschichte ist bereits in Ihrem Verlauf gespeichert. Sie können den Text und das Audio jederzeit wiederholen.",
+    closeStory: "Geschichte Schließen",
     srsReview: "Anki-Wiederholung",
     srsTitle: "Spaced Repetition (SRS / Anki)",
     srsSubtitle: "Vergessenskurve und verteilte Wiederholung, um jeden i+1-Satz dauerhaft im Langzeitgedächtnis zu verankern.",
@@ -1612,6 +1632,10 @@ const translations = {
     hide: "Nascondi",
     saveAction: "Salva",
     loadAction: "Carica",
+    reopenedStoryBadge: "Cronologia / Completata",
+    reopenedStoryTitle: "Storia Già Studiata",
+    reopenedStoryNotice: "Questa storia è già salvata nella tua cronologia. Puoi rileggere il testo e ascoltare gli audio liberamente.",
+    closeStory: "Chiudi Storia",
     srsReview: "Ripasso Anki",
     srsTitle: "Ripetizione Spaziata (SRS / Anki)",
     srsSubtitle: "Curva dell'oblio e ripetizione spaziata per consolidare ogni frase i+1 nella memoria a lungo termine.",
@@ -1701,7 +1725,19 @@ const App: React.FC = () => {
       try {
         const { profile: savedProfile, history: savedHistory } = JSON.parse(savedData);
         if (savedProfile) setProfile({ ...DEFAULT_PROFILE, ...savedProfile });
-        if (savedHistory) setHistory(savedHistory);
+        if (savedHistory && Array.isArray(savedHistory)) {
+          const seen = new Set<string>();
+          const dedupedHistory = savedHistory.filter(item => {
+            if (!item) return false;
+            const key = item.timestamp 
+              ? `${item.timestamp}_${item.story_title}` 
+              : `${item.story_title}_${item.sentences?.[0]?.original || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setHistory(dedupedHistory);
+        }
       } catch (e) {
         console.error("Failed to parse stored data", e);
       }
@@ -1893,6 +1929,24 @@ const App: React.FC = () => {
   };
 
   const handleCompleteLesson = (story: StoryResponse) => {
+    // If this story was reopened from history, simply close it and return to history without duplicating vocabulary or stats
+    if (story.isReopened) {
+      setCurrentStory(null);
+      setActiveTab('history');
+      return;
+    }
+
+    // Safety check: if this exact story is already in history, do not duplicate
+    const isAlreadyInHistory = history.some(h => 
+      (story.historyTimestamp && h.timestamp === story.historyTimestamp) ||
+      (h.story_title === story.story_title && h.sentences?.length === story.sentences?.length && h.sentences?.[0]?.original === story.sentences?.[0]?.original)
+    );
+    if (isAlreadyInHistory) {
+      setCurrentStory(null);
+      setActiveTab('history');
+      return;
+    }
+
     const isReview = !!story.is_review;
     const newWords = Array.isArray(story.new_words_to_add) ? story.new_words_to_add : [];
     const updatedKnownWords = Array.from(new Set([...profile.knownWords, ...newWords]));
@@ -1932,7 +1986,14 @@ const App: React.FC = () => {
   };
 
   const handleReopenStory = (story: StoryResponse) => {
-    setCurrentStory(normalizeStoryResponse(story, !!story.is_review));
+    const isRev = !!story.is_review;
+    const normalized = normalizeStoryResponse(story, isRev);
+    const histTimestamp = (story as HistoryItem).timestamp;
+    setCurrentStory({
+      ...normalized,
+      isReopened: true,
+      historyTimestamp: histTimestamp || undefined
+    });
     setActiveTab('study');
   };
 

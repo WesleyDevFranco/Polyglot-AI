@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { StoryResponse, Sentence } from '../types';
-import { Volume2, ChevronDown, ChevronUp, CheckCircle2, Loader2, Sparkles, Languages, Music, PlayCircle, Info, Download, RefreshCw, Book } from 'lucide-react';
+import { Volume2, ChevronDown, ChevronUp, CheckCircle2, Loader2, Sparkles, Languages, Music, PlayCircle, Info, Download, RefreshCw, Book, BookOpen } from 'lucide-react';
 
 interface StudyAreaProps {
   story: StoryResponse | null;
@@ -346,6 +346,11 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
             {story.is_review && (
               <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1"><RefreshCw size={10} /> {t.reviewMode || 'Review Mode'}</span>
             )}
+            {story.isReopened && (
+              <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1">
+                <BookOpen size={10} /> {t.reopenedStoryBadge || "Histórico / Concluída"}
+              </span>
+            )}
           </div>
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">{story.story_title || (story.is_review ? t.review : t.generate)}</h2>
         </div>
@@ -366,7 +371,19 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
 
       <div className="pt-10 border-t border-slate-200 dark:border-slate-800 text-center">
         <div className="bg-indigo-50 dark:bg-slate-900 p-8 rounded-3xl space-y-6 border border-indigo-100 dark:border-slate-800">
-          <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-400">{story.is_review ? (t.sessionReview || "Session Review") : (t.lessonReview || "Lesson Review")}</h3>
+          <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-400">
+            {story.isReopened
+              ? (t.reopenedStoryTitle || "História Já Concluída")
+              : story.is_review 
+                ? (t.sessionReview || "Session Review") 
+                : (t.lessonReview || "Lesson Review")}
+          </h3>
+
+          {story.isReopened && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto -mt-2">
+              {t.reopenedStoryNotice || "Esta história já foi concluída e está salva no seu histórico. Você pode reler o texto e ouvir os áudios livremente."}
+            </p>
+          )}
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button onClick={handlePlayFull} disabled={isPlayingCurrent} className="flex items-center gap-2 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 px-6 py-3 rounded-xl border border-indigo-100 dark:border-slate-700 hover:shadow-md transition-all font-medium disabled:opacity-50 cursor-pointer">
@@ -377,14 +394,27 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
             </button>
           </div>
 
-          {!story.is_review && newWords.length > 0 && (
+          {!story.is_review && !story.isReopened && newWords.length > 0 && (
             <div className="flex flex-wrap justify-center gap-2">
               {newWords.map((word, i) => (<span key={i} className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700">+ {word}</span>))}
             </div>
           )}
           
-          <button onClick={() => onComplete(story)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-12 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 w-full md:w-auto mx-auto cursor-pointer">
-            <CheckCircle2 size={24} /> {story.is_review ? (t.reviewCompleted || "Review Completed") : (t.lessonCompletedBtn || "Lesson Completed")}
+          <button 
+            onClick={() => onComplete(story)} 
+            className={`font-bold py-4 px-12 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 w-full md:w-auto mx-auto cursor-pointer ${
+              story.isReopened
+                ? "bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600"
+                : "bg-indigo-600 hover:bg-indigo-700 text-white"
+            }`}
+          >
+            <CheckCircle2 size={24} /> {
+              story.isReopened
+                ? (t.closeStory || "Fechar História")
+                : story.is_review 
+                  ? (t.reviewCompleted || "Review Completed") 
+                  : (t.lessonCompletedBtn || "Lesson Completed")
+            }
           </button>
         </div>
       </div>

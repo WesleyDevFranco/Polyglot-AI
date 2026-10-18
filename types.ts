@@ -23,6 +23,8 @@ export interface StoryResponse {
   estimated_vocab_count: string;
   new_words_to_add: string[];
   is_review?: boolean;
+  isReopened?: boolean;
+  historyTimestamp?: number;
 }
 
 export interface UserProfile {
