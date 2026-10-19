@@ -52,17 +52,18 @@ export interface UserProfile {
 export interface HistoryItem extends StoryResponse {
   timestamp: number;
   completed: boolean;
+  targetLanguage?: string;
+  completedAt?: number;
 }
 
 export type SRSBackType = 'full_translation' | 'element_translation' | 'target_definition';
 
 export type SRSCardRating = 1 | 2 | 3 | 4; // 1 = Again, 2 = Hard, 3 = Good, 4 = Easy
 
-export interface SRSCard {
+export interface PersistedSRSCard {
   id: string;
-  storyTitle: string;
   storyTimestamp: number;
-  sentence: Sentence;
+  sentenceId: number;
   targetLanguage: string;
   nativeLanguage: string;
   state: 'new' | 'learning' | 'review' | 'mastered';
@@ -72,8 +73,16 @@ export interface SRSCard {
   interval: number; // in days
   dueDate: number; // timestamp (ms)
   lastReviewed?: number; // timestamp (ms)
-  masteredAt?: number; // timestamp (ms) when card graduated to mastered
   learningAt?: number; // timestamp (ms) when card started learning
+  masteredAt?: number; // timestamp (ms) when card graduated to mastered
+  // Orphan card fallback: retained if story is removed from history
+  sentence?: Sentence;
+  storyTitle?: string;
+}
+
+export interface SRSCard extends PersistedSRSCard {
+  storyTitle: string;
+  sentence: Sentence;
 }
 
 export interface SRSStats {

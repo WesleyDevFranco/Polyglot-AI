@@ -1,4 +1,4 @@
-import { HistoryItem, Sentence, SRSCard, SRSCardRating, SRSStats } from '../types';
+import { HistoryItem, Sentence, SRSCard, PersistedSRSCard, SRSCardRating, SRSStats } from '../types';
 
 export const DEFAULT_EASE_FACTOR = 2.5;
 
@@ -13,7 +13,204 @@ export const getCardId = (storyTimestamp: number, sentenceId: number, sentenceOr
 };
 
 /**
- * Syncs sentences from completed stories in history into the user's SRS flashcard deck
+ * Extracts sentenceId from any card representation (new or legacy)
+ */
+export const getSentenceIdFromCard = (card: { sentenceId?: number; sentence?: { id?: number }; id?: string }): number => {
+  if (typeof card.sentenceId === 'number') return card.sentenceId;
+  if (card.sentence && typeof card.sentence.id === 'number') return card.sentence.id;
+  if (card.id) {
+    const match = card.id.match(/_s(\d+)_/);
+    if (match) return parseInt(match[1], 10);
+  }
+  return 0;
+};
+
+/**
+ * Checks if a card has departed from its initial state (reviewed at least once or moved beyond new)
+ */
+export const isCardNonInitial = (card: PersistedSRSCard | SRSCard): boolean => {
+  return card.state !== 'new' || (card.reps || 0) > 0 || (card.lapses || 0) > 0;
+};
+
+/**
+ * Converts a runtime or raw SRS card to its compact persisted format.
+ * Strips sentence and storyTitle if the story exists in history.
+ * Retains sentence and storyTitle ONLY for orphan cards (story deleted from history).
+ */
+export const toPersistedCard = (
+  card: SRSCard | PersistedSRSCard,
+  history: HistoryItem[]
+): PersistedSRSCard => {
+  const sentenceId = getSentenceIdFromCard(card);
+  const storyExists = Array.isArray(history) && history.some(h => h && h.timestamp === card.storyTimestamp);
+
+  const persisted: PersistedSRSCard = {
+    id: card.id,
+    storyTimestamp: card.storyTimestamp,
+    sentenceId,
+    targetLanguage: card.targetLanguage,
+    nativeLanguage: card.nativeLanguage,
+    state: card.state,
+    reps: card.reps,
+    lapses: card.lapses,
+    easeFactor: card.easeFactor || DEFAULT_EASE_FACTOR,
+    interval: card.interval || 0,
+    dueDate: card.dueDate
+  };
+
+  if (card.lastReviewed !== undefined) persisted.lastReviewed = card.lastReviewed;
+  if (card.learningAt !== undefined) persisted.learningAt = card.learningAt;
+  if (card.masteredAt !== undefined) persisted.masteredAt = card.masteredAt;
+
+  // Orphan fallback: If story does not exist in history, keep sentence and storyTitle
+  if (!storyExists) {
+    if (card.sentence) persisted.sentence = card.sentence;
+    if (card.storyTitle) persisted.storyTitle = card.storyTitle;
+  }
+
+  return persisted;
+};
+
+/**
+ * Filters and compacts cards for persistence (localStorage and export).
+ * Only cards that have exited the initial state are stored, plus any orphan cards with fallback data.
+ */
+export const compactAndFilterPersistedCards = (
+  cards: (PersistedSRSCard | SRSCard)[],
+  history: HistoryItem[]
+): PersistedSRSCard[] => {
+  if (!Array.isArray(cards)) return [];
+  return cards
+    .filter(c => {
+      if (!c) return false;
+      if (isCardNonInitial(c)) return true;
+      const storyExists = Array.isArray(history) && history.some(h => h && h.timestamp === c.storyTimestamp);
+      return !storyExists && Boolean(c.sentence);
+    })
+    .map(c => toPersistedCard(c, history));
+};
+
+/**
+ * Resolves a single persisted SRS card into a complete runtime SRSCard.
+ * Rule: Uses embedded sentence and storyTitle if present (orphan fallback), otherwise looks up in history.
+ */
+export const resolveCard = (
+  card: PersistedSRSCard | SRSCard,
+  history: HistoryItem[]
+): SRSCard | null => {
+  const sentenceId = getSentenceIdFromCard(card);
+
+  // 1. Embedded fallback (orphan cards or pre-resolved)
+  if (card.sentence && card.storyTitle) {
+    return {
+      ...card,
+      sentenceId,
+      sentence: card.sentence,
+      storyTitle: card.storyTitle
+    };
+  }
+
+  // 2. Lookup story in history by timestamp
+  const story = Array.isArray(history) ? history.find(h => h && h.timestamp === card.storyTimestamp) : null;
+  if (!story || !Array.isArray(story.sentences)) {
+    if (card.sentence) {
+      return {
+        ...card,
+        sentenceId,
+        sentence: card.sentence,
+        storyTitle: card.storyTitle || 'Archived Story'
+      };
+    }
+    return null;
+  }
+
+  // 3. Lookup sentence in story
+  const foundSentence = story.sentences.find((s, idx) => {
+    if (s.id !== undefined) return s.id === sentenceId;
+    return idx === sentenceId;
+  }) || story.sentences[sentenceId] || story.sentences[0];
+
+  if (!foundSentence) return null;
+
+  return {
+    ...card,
+    sentenceId,
+    sentence: foundSentence,
+    storyTitle: story.story_title || 'Untitled Story'
+  };
+};
+
+/**
+ * Resolves all active SRS cards at runtime:
+ * 1. Resolves all persisted non-initial cards (and orphan cards) via resolveCard.
+ * 2. Lazily generates virtual "new" cards from history in stable order (oldest story to newest story)
+ *    for any sentence that has not yet been reviewed/persisted.
+ */
+export const resolveAllCards = (
+  persistedCards: PersistedSRSCard[],
+  history: HistoryItem[],
+  targetLanguage: string,
+  nativeLanguage: string
+): SRSCard[] => {
+  const resolvedList: SRSCard[] = [];
+  const trackedCardIds = new Set<string>();
+  const trackedStorySentenceKeys = new Set<string>();
+
+  // 1. Resolve persisted cards
+  if (Array.isArray(persistedCards)) {
+    persistedCards.forEach(pc => {
+      const resolved = resolveCard(pc, history);
+      if (resolved) {
+        resolvedList.push(resolved);
+        trackedCardIds.add(resolved.id);
+        trackedStorySentenceKeys.add(`${resolved.storyTimestamp}_${resolved.sentenceId}`);
+      }
+    });
+  }
+
+  // 2. Generate virtual "new" cards from history (oldest story to newest story)
+  if (Array.isArray(history)) {
+    const completedStories = history
+      .filter(h => h && h.completed && Array.isArray(h.sentences))
+      .slice()
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    completedStories.forEach(story => {
+      story.sentences.forEach((sentence, idx) => {
+        if (!sentence || !sentence.original) return;
+        const sid = sentence.id ?? idx;
+        const cardId = getCardId(story.timestamp, sid, sentence.original);
+        const storySentenceKey = `${story.timestamp}_${sid}`;
+
+        if (!trackedCardIds.has(cardId) && !trackedStorySentenceKeys.has(storySentenceKey)) {
+          const virtualCard: SRSCard = {
+            id: cardId,
+            storyTimestamp: story.timestamp,
+            sentenceId: sid,
+            sentence,
+            storyTitle: story.story_title || 'Untitled Story',
+            targetLanguage: story.targetLanguage || targetLanguage || 'Language',
+            nativeLanguage: (story as any).nativeLanguage || nativeLanguage || 'Native',
+            state: 'new',
+            reps: 0,
+            lapses: 0,
+            easeFactor: DEFAULT_EASE_FACTOR,
+            interval: 0,
+            dueDate: story.completedAt || story.timestamp || Date.now()
+          };
+          resolvedList.push(virtualCard);
+          trackedCardIds.add(cardId);
+          trackedStorySentenceKeys.add(storySentenceKey);
+        }
+      });
+    });
+  }
+
+  return resolvedList;
+};
+
+/**
+ * Legacy compatibility stub: kept for backward compatibility if imported elsewhere
  */
 export const syncCardsFromHistory = (
   history: HistoryItem[],
@@ -21,46 +218,7 @@ export const syncCardsFromHistory = (
   targetLanguage: string,
   nativeLanguage: string
 ): SRSCard[] => {
-  const existingMap = new Map<string, SRSCard>();
-  existingCards.forEach(c => existingMap.set(c.id, c));
-
-  const result: SRSCard[] = [...existingCards];
-
-  if (!Array.isArray(history)) return result;
-
-  const now = Date.now();
-
-  history.forEach(item => {
-    if (!item || !item.completed || !Array.isArray(item.sentences)) return;
-
-    item.sentences.forEach((sentence, idx) => {
-      if (!sentence || !sentence.original) return;
-
-      const sid = sentence.id ?? idx;
-      const cardId = getCardId(item.timestamp, sid, sentence.original);
-
-      if (!existingMap.has(cardId)) {
-        const newCard: SRSCard = {
-          id: cardId,
-          storyTitle: item.story_title || 'Untitled Story',
-          storyTimestamp: item.timestamp,
-          sentence,
-          targetLanguage: targetLanguage || 'Language',
-          nativeLanguage: nativeLanguage || 'Native',
-          state: 'new',
-          reps: 0,
-          lapses: 0,
-          easeFactor: DEFAULT_EASE_FACTOR,
-          interval: 0,
-          dueDate: now // ready for review right away
-        };
-        existingMap.set(cardId, newCard);
-        result.push(newCard);
-      }
-    });
-  });
-
-  return result;
+  return resolveAllCards(existingCards, history, targetLanguage, nativeLanguage);
 };
 
 /**
@@ -183,29 +341,42 @@ export const getCardButtonIntervals = (card: SRSCard): Record<SRSCardRating, str
 };
 
 /**
- * Filters cards that are due for review today or newly introduced
+ * Filters cards that are due for review today or newly introduced (no daily goal limit)
+ * Order: persisted cards due by dueDate ascending; virtual/new cards by storyTimestamp ascending then sentenceId
  */
 export const getDueCards = (cards: SRSCard[], targetLanguage?: string): SRSCard[] => {
   const now = Date.now();
-  return cards
-    .filter(card => {
-      if (targetLanguage && card.targetLanguage && card.targetLanguage !== targetLanguage) {
-        return false;
+  const filtered = cards.filter(card => {
+    if (targetLanguage && card.targetLanguage && card.targetLanguage !== targetLanguage) {
+      return false;
+    }
+    return card.state === 'new' || card.dueDate <= now;
+  });
+
+  return filtered.sort((a, b) => {
+    // Prioritize learning cards first, then review due, then new cards, then mastered
+    const order: Record<string, number> = { learning: 0, review: 1, new: 2, mastered: 3 };
+    const orderA = order[a.state] ?? 1;
+    const orderB = order[b.state] ?? 1;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+
+    // For new cards: stable story order (oldest to newest story, then sentenceId)
+    if (a.state === 'new' && b.state === 'new') {
+      if (a.storyTimestamp !== b.storyTimestamp) {
+        return (a.storyTimestamp || 0) - (b.storyTimestamp || 0);
       }
-      return card.state === 'new' || card.dueDate <= now;
-    })
-    .sort((a, b) => {
-      // Prioritize learning cards first, then review due earliest, then new cards
-      const order = { learning: 0, review: 1, new: 2, mastered: 3 };
-      if (order[a.state] !== order[b.state]) {
-        return order[a.state] - order[b.state];
-      }
-      return a.dueDate - b.dueDate;
-    });
+      return (a.sentenceId ?? 0) - (b.sentenceId ?? 0);
+    }
+
+    // For persisted cards due: dueDate crescente
+    return a.dueDate - b.dueDate;
+  });
 };
 
 /**
- * Computes high-level statistics of the SRS deck
+ * Computes high-level statistics of the SRS deck (no daily goal limit)
  */
 export const computeSRSStats = (cards: SRSCard[], targetLanguage?: string): SRSStats => {
   const now = Date.now();

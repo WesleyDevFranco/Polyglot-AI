@@ -20,7 +20,8 @@ import {
   Filter, 
   Play, 
   Award,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 import { SRSCard, SRSCardRating, SRSBackType, Sentence, StoryResponse } from '../types';
 import { 
@@ -393,13 +394,16 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm(t.srsConfirmQuit || 'Deseja encerrar a sessão de revisão antecipadamente?')) {
-                        setSessionActive(false);
-                      }
+                      setSessionActive(false);
+                      setIsFlipped(false);
+                      setShowPhonetic(false);
+                      setShowExtraDetails(false);
                     }}
-                    className="text-xs text-slate-600 hover:text-rose-600 dark:hover:text-rose-400 font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="text-xs text-slate-600 hover:text-rose-600 dark:hover:text-rose-400 font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-1.5"
+                    title={t.srsFinishSession || 'Sair'}
                   >
-                    {t.srsFinishSession || 'Sair'}
+                    <X size={14} />
+                    <span>{t.srsFinishSession || 'Sair'}</span>
                   </button>
                 </div>
               </div>

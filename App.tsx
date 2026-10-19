@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize, SRSCard, SRSBackType } from './types';
+import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize, SRSCard, PersistedSRSCard, SRSBackType } from './types';
 import { generateStory, generateReviewStory, normalizeStoryResponse } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import StudyArea from './components/StudyArea';
@@ -13,7 +13,7 @@ import { ApiKeyTutorialModal } from './components/ApiKeyTutorialModal';
 import { JsonBackupTutorialModal } from './components/JsonBackupTutorialModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { calculateStreak } from './utils/streak';
-import { syncCardsFromHistory, computeSRSStats } from './utils/srs';
+import { computeSRSStats, resolveAllCards, toPersistedCard, compactAndFilterPersistedCards } from './utils/srs';
 import { BookOpen, LayoutDashboard, History as HistoryIcon, Settings as SettingsIcon, Download, Upload, Sun, Moon, RefreshCw, Flame, Key, FileJson, HelpCircle, Layers, Menu, X } from 'lucide-react';
 
 const STORAGE_KEY = 'polyglot_i1_data_v3';
@@ -1703,7 +1703,7 @@ const calculateLevelFromVocab = (count: number): CEFRLevel => {
 const App: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [srsCards, setSrsCards] = useState<SRSCard[]>([]);
+  const [persistedSrsCards, setPersistedSrsCards] = useState<PersistedSRSCard[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'study' | 'srs' | 'history' | 'settings'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [currentStory, setCurrentStory] = useState<StoryResponse | null>(null);
@@ -1715,11 +1715,23 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const sidebarFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Dynamically resolve full SRS cards in memory:
+  // Combines non-initial persisted cards and virtual "new" cards derived from history (oldest to newest)
+  const srsCards = useMemo(() => {
+    return resolveAllCards(
+      persistedSrsCards,
+      history,
+      profile.targetLanguage,
+      profile.nativeLanguage
+    );
+  }, [persistedSrsCards, history, profile.targetLanguage, profile.nativeLanguage]);
+
   const t = useMemo(() => translations[profile.uiLanguage || 'en'] as any, [profile.uiLanguage]);
   const streakInfo = useMemo(() => calculateStreak(history), [history]);
   const srsStats = useMemo(() => computeSRSStats(srsCards, profile.targetLanguage), [srsCards, profile.targetLanguage]);
 
   useEffect(() => {
+    let initialHistory: HistoryItem[] = [];
     const savedData = localStorage.getItem(STORAGE_KEY);
     if (savedData) {
       try {
@@ -1736,6 +1748,7 @@ const App: React.FC = () => {
             seen.add(key);
             return true;
           });
+          initialHistory = dedupedHistory;
           setHistory(dedupedHistory);
         }
       } catch (e) {
@@ -1748,20 +1761,15 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(savedSrs);
         if (Array.isArray(parsed)) {
-          setSrsCards(parsed);
+          // Backward compatibility: automatically migrate legacy format to compact on startup
+          const migrated = compactAndFilterPersistedCards(parsed, initialHistory);
+          setPersistedSrsCards(migrated);
         }
       } catch (e) {
         console.error("Failed to parse stored SRS cards", e);
       }
     }
   }, []);
-
-  // Sync cards from history into SRS deck whenever history or target language changes
-  useEffect(() => {
-    if (history.length > 0) {
-      setSrsCards(prev => syncCardsFromHistory(history, prev, profile.targetLanguage, profile.nativeLanguage));
-    }
-  }, [history, profile.targetLanguage, profile.nativeLanguage]);
 
   useEffect(() => {
     if (!profile.notificationsEnabled) return;
@@ -1793,17 +1801,32 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, history }));
   }, [profile, history]);
 
+  // Persist compact non-initial cards to localStorage without indentation
   useEffect(() => {
-    localStorage.setItem(SRS_STORAGE_KEY, JSON.stringify(srsCards));
-  }, [srsCards]);
+    const compactList = compactAndFilterPersistedCards(persistedSrsCards, history);
+    localStorage.setItem(SRS_STORAGE_KEY, JSON.stringify(compactList));
+  }, [persistedSrsCards, history]);
 
   const handleUpdateSrsCard = (updatedCard: SRSCard) => {
-    setSrsCards(prev => prev.map(c => c.id === updatedCard.id ? updatedCard : c));
+    const compactCard = toPersistedCard(updatedCard, history);
+    setPersistedSrsCards(prev => {
+      const idx = prev.findIndex(c => c.id === compactCard.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = compactCard;
+        return next;
+      }
+      return [...prev, compactCard];
+    });
   };
 
   const handleUpdateSrsCardsBatch = (updatedCards: SRSCard[]) => {
-    const map = new Map(updatedCards.map(c => [c.id, c]));
-    setSrsCards(prev => prev.map(c => map.get(c.id) || c));
+    const compactBatch = updatedCards.map(c => toPersistedCard(c, history));
+    const batchMap = new Map(compactBatch.map(c => [c.id, c]));
+    setPersistedSrsCards(prev => {
+      const remaining = prev.filter(c => !batchMap.has(c.id));
+      return [...remaining, ...compactBatch];
+    });
   };
 
   const handleGenerateStory = async () => {
@@ -1953,18 +1976,17 @@ const App: React.FC = () => {
     const newLevel = calculateLevelFromVocab(updatedKnownWords.length);
     const levelChanged = newLevel !== profile.level;
     
+    const now = Date.now();
     const newHistoryItem: HistoryItem = {
       ...story,
-      timestamp: Date.now(),
+      targetLanguage: (story as any).targetLanguage || profile.targetLanguage,
+      completedAt: now,
+      timestamp: now,
       completed: true
     };
     
     const updatedHistory = [newHistoryItem, ...history];
     const newStreakInfo = calculateStreak(updatedHistory);
-    
-    // Automatically feed new sentences into Anki SRS deck
-    const newCards = syncCardsFromHistory([newHistoryItem], srsCards, profile.targetLanguage, profile.nativeLanguage);
-    setSrsCards(newCards);
     
     setProfile(prev => ({ 
       ...prev, 
@@ -1998,7 +2020,8 @@ const App: React.FC = () => {
   };
 
   const handleExport = () => {
-    const data = JSON.stringify({ profile, history, srsCards }, null, 2);
+    const compactCards = compactAndFilterPersistedCards(persistedSrsCards, history);
+    const data = JSON.stringify({ profile, history, srsCards: compactCards });
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -2051,12 +2074,14 @@ const App: React.FC = () => {
           }));
         }
 
+        const effectiveHistory = Array.isArray(data.history) ? data.history : history;
         if (Array.isArray(data.history)) {
           setHistory(data.history);
         }
 
         if (Array.isArray(data.srsCards)) {
-          setSrsCards(data.srsCards);
+          const migratedCards = compactAndFilterPersistedCards(data.srsCards, effectiveHistory);
+          setPersistedSrsCards(migratedCards);
         }
 
         alert(t.importSuccess);
