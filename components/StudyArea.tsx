@@ -204,11 +204,18 @@ const SentenceCard: React.FC<{
     if (!sentence || !sentence.original) return "";
     if (!sentence.new_element || isReview) return sentence.original;
     try {
-      const escaped = sentence.new_element.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const parts = sentence.original.split(new RegExp(`(${escaped})`, 'gi'));
+      const trimmed = sentence.new_element.trim();
+      if (!trimmed) return sentence.original;
+      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Match whole words using Unicode letter/number boundaries so small words (e.g. 'He') aren't highlighted inside larger words (e.g. 'The')
+      const boundaryRegex = new RegExp(`(?<![\\p{L}\\p{N}])(${escaped})(?![\\p{L}\\p{N}])`, 'giu');
+      const parts = boundaryRegex.test(sentence.original)
+        ? sentence.original.split(boundaryRegex)
+        : sentence.original.split(new RegExp(`(${escaped})`, 'gi'));
+
       if (!Array.isArray(parts)) return sentence.original;
       return parts.map((part, index) => {
-        if (part.toLowerCase() === sentence.new_element.toLowerCase()) {
+        if (part.toLowerCase() === trimmed.toLowerCase()) {
           return (
             <span key={index} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-md border-b-2 border-indigo-400 dark:border-indigo-600 font-semibold">
               {part}

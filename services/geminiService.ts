@@ -142,39 +142,52 @@ export const generateStory = async (
     5. TARGET DEFINITION: Provide a very brief definition of the 'new_element' IN ${targetLanguage} in the field 'definition_target'. Use simple words.
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.8-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          story_title: { type: Type.STRING },
-          level_target: { type: Type.STRING },
-          sentences: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.NUMBER },
-                original: { type: Type.STRING },
-                translation: { type: Type.STRING },
-                phonetic: { type: Type.STRING },
-                new_element: { type: Type.STRING },
-                explanation: { type: Type.STRING },
-                definition_target: { type: Type.STRING }
-              },
-              required: ["id", "original", "translation"]
-            }
+  const DEFAULT_MODEL = "gemini-3.8-flash";
+  const FALLBACK_MODEL = "gemini-3.1-flash-lite";
+
+  const runGenerate = async (model: string) => {
+    return await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            story_title: { type: Type.STRING },
+            level_target: { type: Type.STRING },
+            sentences: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.NUMBER },
+                  original: { type: Type.STRING },
+                  translation: { type: Type.STRING },
+                  phonetic: { type: Type.STRING },
+                  new_element: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  definition_target: { type: Type.STRING }
+                },
+                required: ["id", "original", "translation"]
+              }
+            },
+            estimated_vocab_count: { type: Type.STRING },
+            new_words_to_add: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
-          estimated_vocab_count: { type: Type.STRING },
-          new_words_to_add: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ["story_title", "sentences", "new_words_to_add"]
+          required: ["story_title", "sentences", "new_words_to_add"]
+        }
       }
-    }
-  });
+    });
+  };
+
+  let response;
+  try {
+    response = await runGenerate(DEFAULT_MODEL);
+  } catch (primaryErr: any) {
+    console.warn(`Default model (${DEFAULT_MODEL}) failed or unavailable: ${primaryErr?.message || primaryErr}. Retrying with fallback model (${FALLBACK_MODEL})...`);
+    response = await runGenerate(FALLBACK_MODEL);
+  }
 
   const parsed = parseJsonResponse(response.text);
   return normalizeStoryResponse(parsed, false, level);
@@ -217,39 +230,52 @@ export const generateReviewStory = async (
     4. Fill 'new_element', 'phonetic', 'explanation', and 'definition_target' with empty strings.
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.8-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          story_title: { type: Type.STRING },
-          level_target: { type: Type.STRING },
-          sentences: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.NUMBER },
-                original: { type: Type.STRING },
-                translation: { type: Type.STRING },
-                phonetic: { type: Type.STRING },
-                new_element: { type: Type.STRING },
-                explanation: { type: Type.STRING },
-                definition_target: { type: Type.STRING }
-              },
-              required: ["id", "original", "translation"]
-            }
+  const DEFAULT_MODEL = "gemini-3.8-flash";
+  const FALLBACK_MODEL = "gemini-3.1-flash-lite";
+
+  const runGenerate = async (model: string) => {
+    return await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            story_title: { type: Type.STRING },
+            level_target: { type: Type.STRING },
+            sentences: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.NUMBER },
+                  original: { type: Type.STRING },
+                  translation: { type: Type.STRING },
+                  phonetic: { type: Type.STRING },
+                  new_element: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  definition_target: { type: Type.STRING }
+                },
+                required: ["id", "original", "translation"]
+              }
+            },
+            estimated_vocab_count: { type: Type.STRING },
+            new_words_to_add: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
-          estimated_vocab_count: { type: Type.STRING },
-          new_words_to_add: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ["story_title", "sentences"]
+          required: ["story_title", "sentences"]
+        }
       }
-    }
-  });
+    });
+  };
+
+  let response;
+  try {
+    response = await runGenerate(DEFAULT_MODEL);
+  } catch (primaryErr: any) {
+    console.warn(`Default model (${DEFAULT_MODEL}) failed or unavailable: ${primaryErr?.message || primaryErr}. Retrying with fallback model (${FALLBACK_MODEL})...`);
+    response = await runGenerate(FALLBACK_MODEL);
+  }
 
   const parsed = parseJsonResponse(response.text);
   return normalizeStoryResponse(parsed, true);

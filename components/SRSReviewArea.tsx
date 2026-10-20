@@ -245,27 +245,34 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
       return <span>{text}</span>;
     }
 
-    // Case-insensitive boundary or submatch replacement
-    const regex = new RegExp(`(${targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = text.split(regex);
+    try {
+      const escaped = targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Match whole words using Unicode letter/number boundaries so small words (e.g. 'He') aren't highlighted inside larger words (e.g. 'The')
+      const boundaryRegex = new RegExp(`(?<![\\p{L}\\p{N}])(${escaped})(?![\\p{L}\\p{N}])`, 'giu');
+      const parts = boundaryRegex.test(text)
+        ? text.split(boundaryRegex)
+        : text.split(new RegExp(`(${escaped})`, 'gi'));
 
-    return (
-      <span className="leading-relaxed">
-        {parts.map((part, i) => {
-          if (part.toLowerCase() === targetWord.toLowerCase()) {
-            return (
-              <span
-                key={i}
-                className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-md font-semibold border-b-2 border-amber-500 shadow-xs inline-block"
-              >
-                {part}
-              </span>
-            );
-          }
-          return <span key={i}>{part}</span>;
-        })}
-      </span>
-    );
+      return (
+        <span className="leading-relaxed">
+          {parts.map((part, i) => {
+            if (part.toLowerCase() === targetWord.toLowerCase()) {
+              return (
+                <span
+                  key={i}
+                  className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-md font-semibold border-b-2 border-amber-500 shadow-xs inline-block"
+                >
+                  {part}
+                </span>
+              );
+            }
+            return <span key={i}>{part}</span>;
+          })}
+        </span>
+      );
+    } catch {
+      return <span>{text}</span>;
+    }
   };
 
   const buttonIntervals = currentCard ? getCardButtonIntervals(currentCard) : null;
