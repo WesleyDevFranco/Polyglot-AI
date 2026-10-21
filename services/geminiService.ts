@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { CEFRLevel, StoryResponse, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from "../types";
+import { resolveNativeLanguage } from "../utils/starterVocab";
 
 export const getApiKey = (customApiKey?: string): string => {
   if (customApiKey && customApiKey.trim().length > 0) {
@@ -28,6 +29,38 @@ const sanitizeKnownWords = (words: any): string[] => {
       })
       .filter(w => w.length > 0 && w !== '[object object]')
   ));
+};
+
+/**
+ * Selects up to 6000 known words for the AI prompt:
+ * - If total known words <= 6000, returns all words directly.
+ * - If > 6000:
+ *   - Takes the 10000 most recent words ('recentVocabulary').
+ *   - Extracts the 1000 most recent words ('ultraRecent') to guarantee active reinforcement.
+ *   - Randomly samples 5000 words from the remaining pool ('randomKnown') for variety.
+ */
+export const selectVocabularyForPrompt = (cleanWords: string[], targetCount = 6000): string[] => {
+  if (cleanWords.length <= targetCount) {
+    return cleanWords;
+  }
+
+  // Up to 10000 most recent words
+  const recentVocabulary = cleanWords.slice(-10000);
+
+  // 1000 most recent words guaranteed for reinforcement
+  const ultraRecentCount = Math.min(1000, recentVocabulary.length);
+  const ultraRecent = recentVocabulary.slice(-ultraRecentCount);
+
+  // Pool from the rest of the recent vocabulary
+  const remainingPool = recentVocabulary.slice(0, -ultraRecentCount);
+
+  // Randomly sample ~5000 words from the rest of recent vocabulary for variety
+  const neededRandom = targetCount - ultraRecent.length;
+  const randomKnown = remainingPool
+    .sort(() => 0.5 - Math.random())
+    .slice(0, neededRandom);
+
+  return [...randomKnown, ...ultraRecent];
 };
 
 const parseJsonResponse = (responseText?: string): any => {
@@ -115,19 +148,19 @@ export const generateStory = async (
   }
   const ai = new GoogleGenAI({ apiKey });
   const sizeMap = { short: "5 to 10", standard: "exactly 10", medium: "10 to 15", long: "15 to 25" };
-  const sentenceCount = sizeMap[storySize] || "5 to 10";
+  const sentenceCount = sizeMap[storySize] || "exactly 10";
   const { langDisplay, focusInstruction } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
+  const resolvedNative = resolveNativeLanguage(nativeLanguage);
 
   const cleanWords = sanitizeKnownWords(knownWords);
-  // Cap vocabulary window for prompt efficiency if excessively large
-  const wordsForPrompt = cleanWords.length > 800 ? cleanWords.slice(-800) : cleanWords;
+  const wordsForPrompt = selectVocabularyForPrompt(cleanWords, 6000);
   const wordsDisplay = wordsForPrompt.length > 0 ? wordsForPrompt.join(", ") : "hello, world, is, the, in, to, and";
 
   const prompt = `
     Act as a Natural Language Acquisition Specialist. 
     Generate a story following the Natural Method (i+1).
     Target Language: ${langDisplay}
-    Native Language: ${nativeLanguage}
+    Native Language: ${resolvedNative}
     CEFR Level: ${level}
     
     ${focusInstruction}
@@ -208,14 +241,15 @@ export const generateReviewStory = async (
   }
   const ai = new GoogleGenAI({ apiKey });
   const { langDisplay, focusInstruction } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
+  const resolvedNative = resolveNativeLanguage(nativeLanguage);
 
   const cleanWords = sanitizeKnownWords(knownWords);
-  const wordsForPrompt = cleanWords.length > 800 ? cleanWords.slice(-800) : cleanWords;
+  const wordsForPrompt = selectVocabularyForPrompt(cleanWords, 6000);
 
   const prompt = `
     Act as a Polyglot Instructor. Generate a REVIEW story.
     Target Language: ${langDisplay}
-    Native Language: ${nativeLanguage}
+    Native Language: ${resolvedNative}
     
     ${focusInstruction}
     

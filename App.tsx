@@ -11,9 +11,11 @@ import { VocabularyModal } from './components/VocabularyModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
 import { ApiKeyTutorialModal } from './components/ApiKeyTutorialModal';
 import { JsonBackupTutorialModal } from './components/JsonBackupTutorialModal';
+import { OnboardingModal } from './components/OnboardingModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { calculateStreak } from './utils/streak';
 import { computeSRSStats, resolveAllCards, toPersistedCard, compactAndFilterPersistedCards } from './utils/srs';
+import { getStarterVocabulary, getNativeLanguageFromUI, resolveNativeLanguage } from './utils/starterVocab';
 import { BookOpen, LayoutDashboard, History as HistoryIcon, Settings as SettingsIcon, Download, Upload, Sun, Moon, RefreshCw, Flame, Key, FileJson, HelpCircle, Layers, Menu, X } from 'lucide-react';
 
 const STORAGE_KEY = 'polyglot_i1_data_v3';
@@ -29,7 +31,7 @@ const DEFAULT_PROFILE: UserProfile = {
   darkMode: false,
   notificationTime: '09:00',
   notificationsEnabled: false,
-  storySize: 'short',
+  storySize: 'standard',
   ancientGreekDialect: 'attic',
   ancientGreekFocus: 'general',
   shakespeareanFocus: 'general',
@@ -1714,6 +1716,44 @@ const App: React.FC = () => {
   const [isGlobalJsonTutorialOpen, setIsGlobalJsonTutorialOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const sidebarFileInputRef = useRef<HTMLInputElement>(null);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem(STORAGE_KEY);
+    } catch {
+      return false;
+    }
+  });
+
+  // Native language is derived from the user's configured interface language
+  const effectiveNativeLanguage = useMemo(() => {
+    return getNativeLanguageFromUI(profile.uiLanguage);
+  }, [profile.uiLanguage]);
+
+  const handleCompleteOnboarding = (data: {
+    name: string;
+    nativeLanguage: string;
+    uiLanguage: UILanguage;
+    targetLanguage: string;
+  }) => {
+    const starter = getStarterVocabulary(data.targetLanguage);
+    const newProfile: UserProfile = {
+      ...DEFAULT_PROFILE,
+      name: data.name,
+      nativeLanguage: data.nativeLanguage,
+      uiLanguage: data.uiLanguage,
+      targetLanguage: data.targetLanguage,
+      storySize: 'standard', // Padrão (10 frases)
+      knownWords: starter,
+      level: 'A1'
+    };
+    setProfile(newProfile);
+    setIsOnboardingOpen(false);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile: newProfile, history: [] }));
+    } catch (err) {
+      console.error("Failed to save initial onboarding profile", err);
+    }
+  };
 
   // Dynamically resolve full SRS cards in memory:
   // Combines non-initial persisted cards and virtual "new" cards derived from history (oldest to newest)
@@ -1722,9 +1762,9 @@ const App: React.FC = () => {
       persistedSrsCards,
       history,
       profile.targetLanguage,
-      profile.nativeLanguage
+      effectiveNativeLanguage
     );
-  }, [persistedSrsCards, history, profile.targetLanguage, profile.nativeLanguage]);
+  }, [persistedSrsCards, history, profile.targetLanguage, effectiveNativeLanguage]);
 
   const t = useMemo(() => translations[profile.uiLanguage || 'en'] as any, [profile.uiLanguage]);
   const streakInfo = useMemo(() => calculateStreak(history), [history]);
@@ -1840,10 +1880,10 @@ const App: React.FC = () => {
     try {
       const story = await generateStory(
         profile.targetLanguage,
-        profile.nativeLanguage,
+        effectiveNativeLanguage,
         profile.level,
         profile.knownWords,
-        profile.storySize,
+        profile.storySize || 'standard',
         profile.ancientGreekDialect,
         profile.ancientGreekFocus,
         profile.shakespeareanFocus,
@@ -1880,7 +1920,7 @@ const App: React.FC = () => {
     try {
       const story = await generateReviewStory(
         profile.targetLanguage,
-        profile.nativeLanguage,
+        effectiveNativeLanguage,
         profile.knownWords,
         profile.ancientGreekDialect,
         profile.ancientGreekFocus,
@@ -1918,7 +1958,7 @@ const App: React.FC = () => {
         }
         const story = await generateReviewStory(
           updatedProfile.targetLanguage,
-          updatedProfile.nativeLanguage,
+          effectiveNativeLanguage,
           updatedProfile.knownWords,
           updatedProfile.ancientGreekDialect,
           updatedProfile.ancientGreekFocus,
@@ -1930,10 +1970,10 @@ const App: React.FC = () => {
       } else {
         const story = await generateStory(
           updatedProfile.targetLanguage,
-          updatedProfile.nativeLanguage,
+          effectiveNativeLanguage,
           updatedProfile.level,
           updatedProfile.knownWords,
-          updatedProfile.storySize,
+          updatedProfile.storySize || 'standard',
           updatedProfile.ancientGreekDialect,
           updatedProfile.ancientGreekFocus,
           updatedProfile.shakespeareanFocus,
@@ -2084,6 +2124,7 @@ const App: React.FC = () => {
           setPersistedSrsCards(migratedCards);
         }
 
+        setIsOnboardingOpen(false);
         alert(t.importSuccess);
       } catch (err) {
         console.error("Import error:", err);
@@ -2295,7 +2336,7 @@ const App: React.FC = () => {
             onUpdateCard={handleUpdateSrsCard}
             onUpdateCardsBatch={handleUpdateSrsCardsBatch}
             targetLanguage={profile.targetLanguage}
-            nativeLanguage={profile.nativeLanguage}
+            nativeLanguage={effectiveNativeLanguage}
             srsBackType={profile.srsBackType || 'full_translation'}
             onChangeBackType={(newType) => setProfile(prev => ({ ...prev, srsBackType: newType }))}
             onNavigateToStudy={() => {
@@ -2371,6 +2412,12 @@ const App: React.FC = () => {
           input.click();
         }}
         t={t}
+      />
+
+      {/* Friendly First-Launch Onboarding Modal */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onComplete={handleCompleteOnboarding}
       />
     </div>
   );

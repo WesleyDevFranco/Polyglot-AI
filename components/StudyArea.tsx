@@ -229,6 +229,69 @@ const SentenceCard: React.FC<{
     }
   };
 
+  const renderHighlightedTranslation = () => {
+    if (!sentence || !sentence.translation) return "";
+    if (!sentence.new_element || isReview) return sentence.translation;
+
+    try {
+      const candidates: string[] = [];
+
+      if (sentence.explanation) {
+        // Strip quotes
+        const rawClean = sentence.explanation.replace(/[«»""'']/g, '').trim();
+        // Remove text in parentheses: e.g. "biblioteca (local...)" -> "biblioteca"
+        const noParens = rawClean.replace(/\([^)]*\)/g, '').trim();
+        // Take part before punctuation delimiters (:, -, —, –, /, ;)
+        const head = noParens.split(/[:;\-—–\/]/)[0].trim();
+        if (head && head.length >= 2) candidates.push(head);
+        if (noParens && noParens.length >= 2 && noParens !== head) candidates.push(noParens);
+
+        // If head has multiple words, also check individual words of length >= 3
+        const words = head.split(/\s+/).filter(w => w.length >= 3);
+        for (const w of words) {
+          if (!candidates.includes(w)) candidates.push(w);
+        }
+      }
+
+      // Also check if new_element itself appears (for loanwords / cognates)
+      if (sentence.new_element && sentence.new_element.trim().length >= 2) {
+        const elemTrimmed = sentence.new_element.trim();
+        if (!candidates.includes(elemTrimmed)) candidates.push(elemTrimmed);
+      }
+
+      for (const cand of candidates) {
+        const escaped = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const boundaryRegex = new RegExp(`(?<![\\p{L}\\p{N}])(${escaped})(?![\\p{L}\\p{N}])`, 'giu');
+        const hasBoundaryMatch = boundaryRegex.test(sentence.translation);
+        const hasPlainMatch = hasBoundaryMatch ? true : new RegExp(`(${escaped})`, 'gi').test(sentence.translation);
+
+        if (hasBoundaryMatch || hasPlainMatch) {
+          const regexToUse = hasBoundaryMatch ? boundaryRegex : new RegExp(`(${escaped})`, 'gi');
+          const parts = sentence.translation.split(regexToUse);
+          if (Array.isArray(parts) && parts.length > 1) {
+            return parts.map((part, index) => {
+              if (part.toLowerCase() === cand.toLowerCase()) {
+                return (
+                  <strong
+                    key={index}
+                    className="not-italic font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-100/70 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded-md border-b-2 border-indigo-400 dark:border-indigo-600 inline-block"
+                  >
+                    {part}
+                  </strong>
+                );
+              }
+              return part;
+            });
+          }
+        }
+      }
+
+      return sentence.translation;
+    } catch {
+      return sentence.translation;
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden transition-all hover:shadow-md">
       <div className="p-6">
@@ -249,8 +312,8 @@ const SentenceCard: React.FC<{
           
           {showTranslation && (
             <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
-              <p className="text-slate-600 dark:text-slate-300 italic p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-indigo-200 dark:border-indigo-800">
-                {sentence.translation}
+              <p className="text-slate-600 dark:text-slate-300 italic p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-indigo-200 dark:border-indigo-800 leading-relaxed">
+                {renderHighlightedTranslation()}
               </p>
               
               <div className="grid grid-cols-1 gap-3">

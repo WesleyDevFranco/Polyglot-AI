@@ -6,31 +6,7 @@ import { VocabularyExplorer } from './VocabularyExplorer';
 import { ApiKeyTutorialModal } from './ApiKeyTutorialModal';
 import { JsonBackupTutorialModal } from './JsonBackupTutorialModal';
 
-const STARTER_VOCABULARY: Record<string, string[]> = {
-  'Shakespearean English': [
-    'thou', 'thee', 'thy', 'thine', 'art', 'hath', 'doth', 'tis', 
-    'wherefore', 'anon', 'nay', 'aye', 'fair', 'heart', 'lord', 'lady', 
-    'love', 'night', 'sun', 'speak', 'shall', 'good', 'heavens', 'farewell'
-  ],
-  'Ancient Greek': [
-    'logos', 'theos', 'anthropos', 'psyche', 'sophia', 'kosmos', 
-    'arete', 'nomos', 'physis', 'polis', 'kalon', 'agathon', 'nous'
-  ],
-  'Latin': [
-    'salve', 'terra', 'aqua', 'ignis', 'caelum', 'homo', 'deus', 
-    'amor', 'lux', 'nox', 'vita', 'mors', 'tempus', 'veritas'
-  ],
-  'English': ['hello', 'world', 'the', 'is', 'a', 'to', 'in', 'and', 'you', 'it'],
-  'Spanish': ['hola', 'mundo', 'el', 'la', 'es', 'un', 'una', 'en', 'y', 'de'],
-  'Portuguese': ['olá', 'mundo', 'o', 'a', 'é', 'um', 'uma', 'em', 'e', 'de'],
-  'French': ['bonjour', 'monde', 'le', 'la', 'est', 'un', 'une', 'dans', 'et', 'de'],
-  'German': ['hallo', 'welt', 'der', 'die', 'das', 'ist', 'ein', 'eine', 'in', 'und'],
-  'Italian': ['ciao', 'mondo', 'il', 'la', 'è', 'un', 'una', 'in', 'e', 'di'],
-  'Japanese': ['konnichiwa', 'sekai', 'kore', 'sore', 'watashi', 'anata', 'desu', 'wa', 'no'],
-  'Chinese': ['nihao', 'shijie', 'zhe', 'na', 'wo', 'ni', 'shi', 'zai', 'he', 'de'],
-  'Russian': ['privet', 'mir', 'eto', 'ya', 'ty', 'on', 'ona', 'v', 'i', 'ne'],
-  'Modern Greek': ['geia', 'kosmos', 'aftos', 'afti', 'einai', 'enas', 'mia', 'se', 'kai']
-};
+import { STARTER_VOCABULARY, resolveNativeLanguage } from '../utils/starterVocab';
 
 interface SettingsProps {
   profile: UserProfile;
@@ -285,11 +261,21 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
             </label>
             <select 
               value={formData.uiLanguage}
-              onChange={(e) => setFormData({...formData, uiLanguage: e.target.value as UILanguage})}
+              onChange={(e) => {
+                const newUi = e.target.value as UILanguage;
+                setFormData({
+                  ...formData,
+                  uiLanguage: newUi,
+                  nativeLanguage: resolveNativeLanguage(newUi)
+                });
+              }}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
             >
               {uiLanguages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
             </select>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t.nativeLanguageSyncHint || "A IA usará esta língua como idioma nativo nas explicações, traduções e interface."}
+            </p>
           </div>
         </div>
 
