@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { StoryResponse, Sentence } from '../types';
@@ -90,14 +89,12 @@ const speakWithBrowser = (text: string, lang: string) => {
 };
 
 const getFullStoryAudioData = async (story: StoryResponse, targetLanguage: string, customApiKey?: string) => {
-  const apiKey = (customApiKey && customApiKey.trim().length > 0) 
-    ? customApiKey.trim() 
-    : (process.env.GEMINI_API_KEY || process.env.API_KEY || "");
+  const apiKey = customApiKey?.trim() || "";
   const sentences = Array.isArray(story?.sentences) ? story.sentences : [];
   if (sentences.length === 0) throw new Error("A história não possui frases.");
   const fullText = sentences.map(s => s.original).filter(Boolean).join(" ").trim();
   
-  if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
+  if (!apiKey) {
     throw new Error("API key not configured");
   }
 
@@ -160,10 +157,8 @@ const SentenceCard: React.FC<{
     if (isProcessingAudio || !sentence?.original) return;
     setIsProcessingAudio(true);
     try {
-      const apiKey = (customApiKey && customApiKey.trim().length > 0)
-        ? customApiKey.trim()
-        : (process.env.GEMINI_API_KEY || process.env.API_KEY || "");
-      if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
+      const apiKey = customApiKey?.trim() || "";
+      if (!apiKey) {
         speakWithBrowser(sentence.original, targetLanguage);
         return;
       }

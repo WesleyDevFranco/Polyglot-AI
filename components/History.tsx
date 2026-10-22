@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { HistoryItem, StoryResponse } from '../types';
 import { Clock, Book, ExternalLink, Play, Loader2, Download } from 'lucide-react';
@@ -9,9 +8,10 @@ interface HistoryProps {
   onReopen: (story: StoryResponse) => void;
   targetLanguage: string;
   t: any;
+  apiKey?: string;
 }
 
-const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage, t }) => {
+const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage, t, apiKey }) => {
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
   const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
 
@@ -29,7 +29,7 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage, t 
     if (playingIdx !== null) return;
     setPlayingIdx(idx);
     try {
-      await playFullStoryAudio(item, targetLanguage);
+      await playFullStoryAudio(item, targetLanguage, apiKey);
     } catch (err: any) {
       alert(`Audio Error: ${err.message}`);
     } finally {
@@ -41,7 +41,7 @@ const History: React.FC<HistoryProps> = ({ history, onReopen, targetLanguage, t 
     if (downloadingIdx !== null) return;
     setDownloadingIdx(idx);
     try {
-      await downloadFullStoryAudio(item, targetLanguage);
+      await downloadFullStoryAudio(item, targetLanguage, apiKey);
     } catch (err: any) {
       alert(`Download Error: ${err.message}`);
     } finally {

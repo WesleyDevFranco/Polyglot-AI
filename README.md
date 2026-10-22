@@ -6,8 +6,6 @@ Polyglot i+1 is an AI-powered language learning application built around the **N
 
 Instead of relying exclusively on isolated word lists, Polyglot generates personalized stories based on your current proficiency level and known vocabulary. Each lesson introduces new linguistic elements in context, helping you build comprehension, vocabulary, and familiarity with the target language.
 
-**You can use it for free here: https://polyglotai.ai.studio/**
-
 ## ✨ Features
 
 ### 📖 Personalized AI-Generated Stories
