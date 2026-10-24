@@ -21,13 +21,13 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ profile, onGenerate, onReview, loading, historyCount, t, history, onOpenVocabModal, srsDueCount = 0, onNavigateToSRS }) => {
   const thresholds = [
-    { level: 'Pre-A1', min: 0, max: 500 },
-    { level: 'A1', min: 500, max: 1200 },
-    { level: 'A2', min: 1200, max: 2500 },
-    { level: 'B1', min: 2500, max: 4500 },
-    { level: 'B2', min: 4500, max: 8500 },
-    { level: 'C1', min: 8500, max: 16000 },
-    { level: 'C2', min: 16000, max: 25000 },
+    { level: 'Pre-A1', min: 0, max: 600 },
+    { level: 'A1', min: 600, max: 1500 },
+    { level: 'A2', min: 1500, max: 3000 },
+    { level: 'B1', min: 3000, max: 6000 },
+    { level: 'B2', min: 6000, max: 12000 },
+    { level: 'C1', min: 12000, max: 20000 },
+    { level: 'C2', min: 20000, max: 30000 },
   ];
 
   const calculateLevelProgress = (wordCount: number) => {

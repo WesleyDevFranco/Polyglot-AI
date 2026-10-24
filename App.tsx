@@ -43,12 +43,12 @@ const DEFAULT_PROFILE: UserProfile = {
 };
 
 const calculateLevelFromVocab = (count: number): CEFRLevel => {
-  if (count < 500) return 'Pre-A1';
-  if (count < 1200) return 'A1';
-  if (count < 2500) return 'A2';
-  if (count < 4500) return 'B1';
-  if (count < 8500) return 'B2';
-  if (count < 16000) return 'C1';
+  if (count < 600) return 'Pre-A1';
+  if (count < 1500) return 'A1';
+  if (count < 3000) return 'A2';
+  if (count < 6000) return 'B1';
+  if (count < 12000) return 'B2';
+  if (count < 20000) return 'C1';
   return 'C2';
 };
 
