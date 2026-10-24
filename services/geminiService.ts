@@ -311,8 +311,55 @@ const generateWithResilience = async <T,>(
 };
 
 // ============================================================
-// Gemini call (shared schema)
+// Gemini call (schemas & execution)
 // ============================================================
+export const storyGenerationSchema = {
+  type: Type.OBJECT,
+  properties: {
+    story_title: { type: Type.STRING },
+    level_target: { type: Type.STRING },
+    proper_nouns: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "Names of people, places, and characters appearing in the story, written as in the text"
+    },
+    sentences: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.NUMBER },
+          original: { type: Type.STRING },
+          translation: { type: Type.STRING }
+        },
+        required: ["id", "original", "translation"]
+      }
+    }
+  },
+  required: ["story_title", "level_target", "proper_nouns", "sentences"]
+};
+
+export const annotationsSchema = {
+  type: Type.OBJECT,
+  properties: {
+    annotations: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.NUMBER },
+          phonetic: { type: Type.STRING },
+          explanation: { type: Type.STRING },
+          definition_target: { type: Type.STRING },
+          part_of_speech: { type: Type.STRING }
+        },
+        required: ["id", "phonetic", "explanation", "definition_target", "part_of_speech"]
+      }
+    }
+  },
+  required: ["annotations"]
+};
+
 const buildStorySchema = (required: string[]) => ({
   type: Type.OBJECT,
   properties: {
@@ -341,7 +388,11 @@ const buildStorySchema = (required: string[]) => ({
   required
 });
 
-const callGemini = async (apiKey: string, prompt: string, required: string[]): Promise<{ data: any; modelUsed: string }> => {
+export const callGeminiWithSchema = async (
+  apiKey: string,
+  prompt: string,
+  schema: any
+): Promise<{ data: any; modelUsed: string }> => {
   const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: REQUEST_TIMEOUT_MS } });
 
   const run = (model: string) =>
@@ -350,7 +401,7 @@ const callGemini = async (apiKey: string, prompt: string, required: string[]): P
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        responseSchema: buildStorySchema(required)
+        responseSchema: schema
       }
     });
 
@@ -363,12 +414,20 @@ const callGemini = async (apiKey: string, prompt: string, required: string[]): P
   return { data, modelUsed };
 };
 
+export const callGemini = async (
+  apiKey: string,
+  prompt: string,
+  required: string[] = ["story_title", "sentences"]
+): Promise<{ data: any; modelUsed: string }> => {
+  return callGeminiWithSchema(apiKey, prompt, buildStorySchema(required));
+};
+
 // ============================================================
-// ============================================================
-// Post-generation i+1 validation
+// Post-generation i+1 validation & Vocabulary Analysis
 // ============================================================
 export const MIN_KNOWN_RATIO_STORY = 0.85; // 85% known words threshold for i+1 story
 export const MAX_UNKNOWN_RATIO_REVIEW = 0.05; // 5% max unknown words for review story
+export const MIN_VOCAB_FOR_VALIDATION = 100; // Skip validation/regeneration if known words < 100
 
 export interface StoryValidationResult {
   knownRatio: number;
@@ -387,38 +446,181 @@ export const tokenize = (text: string): string[] =>
     .match(/[\p{L}\p{M}]+/gu)?.filter(t => t.length > 1) || [];
 
 /**
- * Returns the IDs of sentences whose new_element, when tokenized, has ALL words
- * already present in the user's complete known vocabulary.
- * Sentences without a new_element are not included.
+ * Extracts proper nouns and detects middle-of-sentence capitalized words as extra safeguard
  */
-export const getInvalidNewElementIds = (story: StoryResponse, knownWords: string[]): number[] => {
+export const extractSentenceProperNouns = (
+  sentenceText: string,
+  globalProperNounTokens: Set<string>
+): Set<string> => {
+  const ignored = new Set<string>(globalProperNounTokens);
+  // Match word chunks to detect middle-of-sentence capitalized words
+  const rawWords = sentenceText.match(/[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)?/gu) || [];
+  for (let i = 1; i < rawWords.length; i++) {
+    const word = rawWords[i];
+    const firstChar = word.charAt(0);
+    // Ignore middle-of-sentence capitalized words as proper nouns
+    if (firstChar !== firstChar.toLowerCase() && firstChar === firstChar.toUpperCase()) {
+      const tokens = tokenize(word);
+      tokens.forEach(t => ignored.add(t));
+    }
+  }
+  return ignored;
+};
+
+export interface SentenceAnalysis {
+  sentenceId: number;
+  tokens: string[];
+  unknownTokens: string[];
+  newElement: string;
+  extraUnknownCount: number;
+}
+
+/**
+ * In-code analysis of a sentence against known vocabulary and proper nouns:
+ * - Tokenizes sentence
+ * - Ignores proper nouns (from proper_nouns list and middle-of-sentence capitalization)
+ * - Identifies unknown tokens (not in known vocabulary)
+ * - Sets new_element to first unknown token (or empty)
+ * - Records extraUnknownCount (Math.max(0, unknownTokens.length - 1))
+ */
+export const analyzeSentenceTokens = (
+  sentence: { id: number; original: string },
+  knownSet: Set<string>,
+  globalProperNounTokens: Set<string>
+): SentenceAnalysis => {
+  const tokens = tokenize(sentence.original);
+  const sentenceProperNouns = extractSentenceProperNouns(sentence.original, globalProperNounTokens);
+
+  const unknownTokens: string[] = [];
+  for (const token of tokens) {
+    if (knownSet.has(token)) continue;
+    if (sentenceProperNouns.has(token)) continue;
+    unknownTokens.push(token);
+  }
+
+  const newElement = unknownTokens.length > 0 ? unknownTokens[0] : '';
+  const extraUnknownCount = Math.max(0, unknownTokens.length - 1);
+
+  return {
+    sentenceId: sentence.id,
+    tokens,
+    unknownTokens,
+    newElement,
+    extraUnknownCount
+  };
+};
+
+export interface StoryAnalysis {
+  sentenceAnalyses: SentenceAnalysis[];
+  sentencesWith3OrMoreUnknowns: number;
+  sentencesWith0Unknowns: number;
+  totalSentences: number;
+  ratioWith3OrMore: number;
+  ratioWith0: number;
+  problematicCount: number;
+  uniqueUnknownWords: string[];
+}
+
+/**
+ * Analyzes the entire story vocabulary against full known vocabulary
+ */
+export const analyzeStoryVocabulary = (
+  story: StoryResponse,
+  knownWords: string[]
+): StoryAnalysis => {
   const cleanKnown = sanitizeKnownWords(knownWords);
   const knownSet = new Set(cleanKnown);
-  const invalidIds: number[] = [];
 
-  const sentences = Array.isArray(story.sentences) ? story.sentences : [];
-  for (const s of sentences) {
-    if (!s.new_element || !s.new_element.trim()) continue;
-    const tokens = tokenize(s.new_element);
-    if (tokens.length === 0) continue;
-    const allKnown = tokens.every(t => knownSet.has(t));
-    if (allKnown) {
-      invalidIds.push(s.id);
+  const globalProperNounTokens = new Set<string>();
+  const rawProperNouns = Array.isArray(story.proper_nouns) ? story.proper_nouns : [];
+  for (const pn of rawProperNouns) {
+    if (typeof pn === 'string') {
+      tokenize(pn).forEach(t => globalProperNounTokens.add(t));
     }
   }
 
-  return invalidIds;
+  const sentences = Array.isArray(story.sentences) ? story.sentences : [];
+  const sentenceAnalyses: SentenceAnalysis[] = [];
+  let sentencesWith3OrMoreUnknowns = 0;
+  let sentencesWith0Unknowns = 0;
+  const seenUnknowns = new Set<string>();
+  const uniqueUnknownWords: string[] = [];
+
+  for (const s of sentences) {
+    const analysis = analyzeSentenceTokens(s, knownSet, globalProperNounTokens);
+    sentenceAnalyses.push(analysis);
+
+    if (analysis.unknownTokens.length >= 3) {
+      sentencesWith3OrMoreUnknowns++;
+    }
+    if (analysis.unknownTokens.length === 0) {
+      sentencesWith0Unknowns++;
+    }
+
+    for (const u of analysis.unknownTokens) {
+      if (!seenUnknowns.has(u)) {
+        seenUnknowns.add(u);
+        uniqueUnknownWords.push(u);
+      }
+    }
+  }
+
+  const totalSentences = sentences.length;
+  const ratioWith3OrMore = totalSentences > 0 ? sentencesWith3OrMoreUnknowns / totalSentences : 0;
+  const ratioWith0 = totalSentences > 0 ? sentencesWith0Unknowns / totalSentences : 0;
+  const problematicCount = sentencesWith3OrMoreUnknowns + sentencesWith0Unknowns;
+
+  return {
+    sentenceAnalyses,
+    sentencesWith3OrMoreUnknowns,
+    sentencesWith0Unknowns,
+    totalSentences,
+    ratioWith3OrMore,
+    ratioWith0,
+    problematicCount,
+    uniqueUnknownWords
+  };
 };
 
 /**
- * Validates the story vocabulary against the user's complete known vocabulary.
- *
- * NOTE ON INFLECTED LANGUAGES:
- * Highly inflected languages (e.g., Italian, Latin, Ancient Greek) naturally produce
- * morphological conjugations/declensions (e.g. verb tenses, case endings) that may register
- * as unrecognized when tested strictly against dictionary base words. The 85% threshold
- * (MIN_KNOWN_RATIO_STORY) accommodates these natural grammatical variations while catching
- * runaway vocabulary hallucinations.
+ * Applies in-code sentence analysis (new_element and extraUnknownCount) to the story
+ */
+export const applyAnalysisToStory = (
+  story: StoryResponse,
+  analysis: StoryAnalysis
+): StoryResponse => {
+  const analysisMap = new Map<number, SentenceAnalysis>();
+  for (const a of analysis.sentenceAnalyses) {
+    analysisMap.set(a.sentenceId, a);
+  }
+
+  const updatedSentences = (story.sentences || []).map(s => {
+    const a = analysisMap.get(s.id);
+    if (!a) return s;
+    return {
+      ...s,
+      new_element: a.newElement,
+      extraUnknownCount: a.extraUnknownCount
+    };
+  });
+
+  const uniqueNewElements = Array.from(
+    new Set(
+      updatedSentences
+        .map(s => s.new_element?.trim().toLowerCase())
+        .filter((w): w is string => Boolean(w && w.length > 0))
+    )
+  );
+
+  return {
+    ...story,
+    sentences: updatedSentences,
+    new_words_to_add: uniqueNewElements
+  };
+};
+
+/**
+ * Validates the story vocabulary against the user's complete known vocabulary (used for review stories).
  */
 export const validateStoryAgainstVocabulary = (
   story: StoryResponse,
@@ -438,11 +640,9 @@ export const validateStoryAgainstVocabulary = (
   for (const s of sentences) {
     if (!s.original) continue;
 
-    // Tokenize word characters with Unicode letters and marks; ignore elisions and punctuation
     const tokens = tokenize(s.original);
     if (tokens.length === 0) continue;
 
-    // Allowed set for this sentence includes known words + the sentence's own new_element tokens
     const allowed = new Set(knownSet);
     if (s.new_element) {
       const elemTokens = tokenize(s.new_element);
@@ -488,7 +688,116 @@ export const validateStoryAgainstVocabulary = (
 };
 
 // ============================================================
-// Story generation
+// Phase 2: Linguistic Annotation (batch call for story)
+// ============================================================
+export const annotateStory = async (
+  apiKey: string,
+  story: StoryResponse,
+  targetLanguage: string,
+  nativeLanguage: string,
+  ancientGreekDialect?: AncientGreekDialect,
+  ancientGreekFocus?: AncientGreekFocus,
+  shakespeareanFocus?: ShakespeareanFocus
+): Promise<{ story: StoryResponse; modelUsed?: string }> => {
+  const sentences = Array.isArray(story.sentences) ? story.sentences : [];
+  const itemsToAnnotate = sentences
+    .filter(s => s.new_element && s.new_element.trim().length > 0)
+    .map(s => ({
+      id: s.id,
+      sentence: s.original,
+      word: s.new_element
+    }));
+
+  if (itemsToAnnotate.length === 0) {
+    return {
+      story: {
+        ...story,
+        annotationsFailed: false
+      }
+    };
+  }
+
+  const { langDisplay } = getLanguageConfig(targetLanguage, ancientGreekDialect, ancientGreekFocus, shakespeareanFocus);
+  const resolvedNative = resolveNativeLanguage(nativeLanguage);
+
+  const annotationPrompt = `
+Act as a Linguistic Annotation Specialist.
+Annotate the target new vocabulary words in the following sentences for a student learning ${langDisplay} whose native language is ${resolvedNative}.
+
+Sentences and target words to annotate:
+${JSON.stringify(itemsToAnnotate, null, 2)}
+
+REQUIREMENTS FOR EACH ITEM:
+1. phonetic: IPA (International Phonetic Alphabet) transcription of the target word.
+2. explanation: In ${resolvedNative}, a short sentence explaining the meaning and nuance of the word in this sentence context.
+3. definition_target: In ${targetLanguage}, a simple, concise definition or synonym using basic vocabulary.
+4. part_of_speech: The grammatical category (e.g. noun, verb, adjective, adverb, preposition).
+
+CRITICAL LANGUAGE REQUIREMENT:
+The field 'explanation' MUST be written in ${resolvedNative}.
+The field 'definition_target' MUST be written in ${targetLanguage}.
+`;
+
+  try {
+    const { data: annotData, modelUsed } = await callGeminiWithSchema(apiKey, annotationPrompt, annotationsSchema);
+    const annotationsList = Array.isArray(annotData?.annotations) ? annotData.annotations : [];
+    const annotMap = new Map<number, any>();
+    for (const item of annotationsList) {
+      if (typeof item?.id === 'number') {
+        annotMap.set(item.id, item);
+      }
+    }
+
+    const annotatedSentences = sentences.map(s => {
+      const annot = annotMap.get(s.id);
+      if (annot) {
+        return {
+          ...s,
+          phonetic: String(annot.phonetic || '').trim(),
+          explanation: String(annot.explanation || '').trim(),
+          definition_target: String(annot.definition_target || '').trim(),
+          part_of_speech: String(annot.part_of_speech || '').trim()
+        };
+      }
+      return {
+        ...s,
+        phonetic: '',
+        explanation: '',
+        definition_target: '',
+        part_of_speech: ''
+      };
+    });
+
+    return {
+      story: {
+        ...story,
+        sentences: annotatedSentences,
+        annotationsFailed: false
+      },
+      modelUsed
+    };
+  } catch (err) {
+    console.warn("[Annotations] Annotation call failed, retaining story with empty annotations:", err);
+    const fallbackSentences = sentences.map(s => ({
+      ...s,
+      phonetic: '',
+      explanation: '',
+      definition_target: '',
+      part_of_speech: ''
+    }));
+
+    return {
+      story: {
+        ...story,
+        sentences: fallbackSentences,
+        annotationsFailed: true
+      }
+    };
+  }
+};
+
+// ============================================================
+// Story generation (Two-Phase Pipeline)
 // ============================================================
 export const generateStory = async (
   targetLanguage: string,
@@ -516,6 +825,8 @@ export const generateStory = async (
   const wordsForPrompt = selectVocabularyForPrompt(cleanWords, PROMPT_VOCAB_LIMIT, weakWords);
   const wordsDisplay = wordsForPrompt.length > 0 ? wordsForPrompt.join(", ") : "hello, world, is, the, in, to, and";
 
+  const explicitLanguageInstruction = `The field 'translation' MUST be written in ${resolvedNative}. The field 'explanation' MUST be written in ${resolvedNative}. 'definition_target' MUST be written in ${targetLanguage}.`;
+
   const prompt = `
     Act as a Natural Language Acquisition Specialist. 
     Generate a story following the Natural Method (i+1).
@@ -526,139 +837,99 @@ export const generateStory = async (
     ${focusInstruction}
     
     KNOWN WORDS (${cleanWords.length} total words): [${wordsDisplay}]
-
-    CRITICAL: Every 'new_element' MUST NOT appear in the KNOWN WORDS list. Words in the list are already learned: never present them as new. Before answering, check each new_element against the list and pick a different word if it is there.
     
-    RULES:
-    1. i+1: Use known words for 95% of text.
-    2. Introduce ONE new element per sentence NOT in the list.
-    3. Length: ${sentenceCount} sentences.
-    4. Provide IPA for the new element.
-    5. TARGET DEFINITION: Provide a very brief definition of the 'new_element' IN ${targetLanguage} in the field 'definition_target'. Use simple words.
-    6. PART OF SPEECH: Identify the grammatical class of the 'new_element' (e.g. noun, verb, adjective, adverb, phrasal verb, etc.) in the field 'part_of_speech'.
+    CRITICAL LANGUAGE REQUIREMENT:
+    ${explicitLanguageInstruction}
+
+    STORY GUIDELINES:
+    1. Write simple, natural sentences in ${langDisplay}.
+    2. The vast majority of words in each sentence MUST come from the KNOWN WORDS list.
+    3. Introduce at most ONE word outside the KNOWN WORDS list per sentence.
+    4. Length: ${sentenceCount} sentences.
+    5. List all character names, person names, and place names that appear in the story in 'proper_nouns' exactly as written in the text.
+    6. For each sentence, provide 'id', 'original', and 'translation'.
   `;
 
-  const { data: parsed, modelUsed } = await callGemini(apiKey, prompt, ["story_title", "sentences", "new_words_to_add"]);
+  // Phase 1: Generate story sentences and proper nouns
+  const { data: parsed, modelUsed: phase1Model } = await callGeminiWithSchema(
+    apiKey,
+    prompt,
+    storyGenerationSchema
+  );
   let story = normalizeStoryResponse(parsed, false, level);
-  story.modelUsed = modelUsed;
+  let storyModelUsed = phase1Model;
 
-  // Known words that were left out of the sampled list must not come back as "new"
-  const knownSet = new Set(cleanWords);
-  story.new_words_to_add = story.new_words_to_add.filter(w => !knownSet.has(w));
+  // In-code detection of new_element and extraUnknownCount
+  let analysis = analyzeStoryVocabulary(story, cleanWords);
+  story = applyAnalysisToStory(story, analysis);
 
-  // Validation against full known vocabulary and new_element uniqueness
-  let validation = validateStoryAgainstVocabulary(story, cleanWords, false);
-  let invalidNewElementIds = getInvalidNewElementIds(story, cleanWords);
-  const sentencesWithNewElem = story.sentences.filter(s => s.new_element && s.new_element.trim().length > 0);
-  let invalidNewElemRatio = sentencesWithNewElem.length > 0 ? invalidNewElementIds.length / sentencesWithNewElem.length : 0;
+  // Regeneration criteria: >30% sentences with >=3 unknowns, OR >50% sentences with 0 unknowns
+  const canValidate = cleanWords.length >= MIN_VOCAB_FOR_VALIDATION;
+  const shouldRegenerate = canValidate && (analysis.ratioWith3OrMore > 0.3 || analysis.ratioWith0 > 0.5);
 
-  const shouldRegenerate = !validation.isValid || invalidNewElemRatio > MAX_INVALID_NEW_ELEMENT_RATIO;
   if (shouldRegenerate) {
     console.warn(
-      `[Story Validation] Needs regeneration: Known ratio ${(validation.knownRatio * 100).toFixed(1)}% (min ${MIN_KNOWN_RATIO_STORY * 100}%), ` +
-      `Invalid new_element ratio ${(invalidNewElemRatio * 100).toFixed(1)}% (max ${MAX_INVALID_NEW_ELEMENT_RATIO * 100}%). Attempting 1 regeneration...`
+      `[Story Validation] Needs regeneration: ${(analysis.ratioWith3OrMore * 100).toFixed(1)}% sentences with >=3 unknowns, ` +
+      `${(analysis.ratioWith0 * 100).toFixed(1)}% sentences with 0 unknowns. Attempting 1 regeneration...`
     );
     try {
-      // Collect up to 30 unknown words
-      const unknownWordsList: string[] = [];
-      const seenUnknowns = new Set<string>();
-      validation.unknownWordsPerSentence.forEach(u => {
-        u.unknownWords.forEach(w => {
-          if (!seenUnknowns.has(w)) {
-            seenUnknowns.add(w);
-            unknownWordsList.push(w);
-          }
-        });
-      });
-      const top30Unknowns = unknownWordsList.slice(0, 30);
-
-      // Collect known words mistakenly used as new elements
-      const knownMistakenAsNew: string[] = [];
-      const seenKnownAsNew = new Set<string>();
-      for (const s of story.sentences) {
-        if (invalidNewElementIds.includes(s.id) && s.new_element) {
-          const raw = s.new_element.trim();
-          if (raw && !seenKnownAsNew.has(raw.toLowerCase())) {
-            seenKnownAsNew.add(raw.toLowerCase());
-            knownMistakenAsNew.push(raw);
-          }
-        }
-      }
-
       let revisionNotes = `CRITICAL REVISION REQUIREMENT:\n`;
-      if (top30Unknowns.length > 0) {
-        revisionNotes += `AVOID these words, they are not in the known list: [${top30Unknowns.join(', ')}].\n`;
+      if (analysis.ratioWith3OrMore > 0.3) {
+        const top30 = analysis.uniqueUnknownWords.slice(0, 30);
+        revisionNotes += `AVOID these words, they are not in the known list: [${top30.join(', ')}].\n`;
+        revisionNotes += `Use ONLY words from the KNOWN WORDS list for 95% of each sentence, introducing at most 1 new word per sentence.\n`;
       }
-      if (knownMistakenAsNew.length > 0) {
-        revisionNotes += `These are already known and MUST NOT be used as new elements: [${knownMistakenAsNew.join(', ')}].\n`;
+      if (analysis.ratioWith0 > 0.5) {
+        revisionNotes += `The previous story lacked novelty. Introduce exactly one word that is NOT in the known list in each sentence.\n`;
       }
-      revisionNotes += `Strictly adhere to the KNOWN WORDS list. Use ONLY words from that list for 95% of each sentence, introducing strictly at most 1 new element per sentence that does not appear in known words.`;
 
-      const regenPrompt = `${prompt}\n\n${revisionNotes}`;
-      const { data: regenParsed, modelUsed: regenModel } = await callGemini(apiKey, regenPrompt, ["story_title", "sentences", "new_words_to_add"]);
-      const regenStory = normalizeStoryResponse(regenParsed, false, level);
-      regenStory.modelUsed = regenModel;
-      regenStory.new_words_to_add = regenStory.new_words_to_add.filter(w => !knownSet.has(w));
+      const regenPrompt = `${prompt}\n\n${revisionNotes}\n${explicitLanguageInstruction}`;
+      const { data: regenParsed, modelUsed: regenModel } = await callGeminiWithSchema(
+        apiKey,
+        regenPrompt,
+        storyGenerationSchema
+      );
+      let regenStory = normalizeStoryResponse(regenParsed, false, level);
+      const regenAnalysis = analyzeStoryVocabulary(regenStory, cleanWords);
+      regenStory = applyAnalysisToStory(regenStory, regenAnalysis);
 
-      const regenValidation = validateStoryAgainstVocabulary(regenStory, cleanWords, false);
-      const regenInvalidIds = getInvalidNewElementIds(regenStory, cleanWords);
-      const regenSentencesWithNew = regenStory.sentences.filter(s => s.new_element && s.new_element.trim().length > 0);
-      const regenInvalidRatio = regenSentencesWithNew.length > 0 ? regenInvalidIds.length / regenSentencesWithNew.length : 0;
-
-      const isRegenValid = regenValidation.isValid && regenInvalidRatio <= MAX_INVALID_NEW_ELEMENT_RATIO;
-      const isOriginalValid = validation.isValid && invalidNewElemRatio <= MAX_INVALID_NEW_ELEMENT_RATIO;
-
-      if (isRegenValid && !isOriginalValid) {
+      // Keep version with fewest problematic sentences (sentences with >=3 unknowns + sentences with 0 unknowns)
+      if (regenAnalysis.problematicCount < analysis.problematicCount) {
         story = regenStory;
-        validation = regenValidation;
-        invalidNewElementIds = regenInvalidIds;
-      } else if (isRegenValid && isOriginalValid) {
-        if (regenValidation.knownRatio >= validation.knownRatio) {
-          story = regenStory;
-          validation = regenValidation;
-          invalidNewElementIds = regenInvalidIds;
-        }
-      } else {
-        const origScore = validation.knownRatio - invalidNewElemRatio;
-        const regenScore = regenValidation.knownRatio - regenInvalidRatio;
-        if (regenScore > origScore) {
-          story = regenStory;
-          validation = regenValidation;
-          invalidNewElementIds = regenInvalidIds;
-        }
+        analysis = regenAnalysis;
+        storyModelUsed = regenModel;
       }
     } catch (e) {
       console.warn("[Story Validation] Regeneration attempt failed, retaining original story:", e);
     }
   }
 
-  // Clear new_element, explanation, phonetic, definition_target, and part_of_speech for any remaining invalid sentences
-  const finalInvalidSet = new Set(getInvalidNewElementIds(story, cleanWords));
-  if (finalInvalidSet.size > 0) {
-    story.sentences = story.sentences.map(s => {
-      if (finalInvalidSet.has(s.id)) {
-        return {
-          ...s,
-          new_element: '',
-          explanation: '',
-          phonetic: '',
-          definition_target: '',
-          part_of_speech: ''
-        };
-      }
-      return s;
-    });
-
-    const validNewElements = new Set(
-      story.sentences.map(s => s.new_element?.trim().toLowerCase()).filter(Boolean) as string[]
-    );
-    story.new_words_to_add = story.new_words_to_add.filter(w => validNewElements.has(w.toLowerCase()));
-  }
-
-  if (!validation.isValid) {
+  if (canValidate && analysis.ratioWith3OrMore > 0.3) {
     story.hasHighUnknownWords = true;
+  } else {
+    story.hasHighUnknownWords = false;
   }
 
+  // Phase 2: Annotations (IPA, explanation, definition, POS)
+  const { story: annotatedStory, modelUsed: annotModelUsed } = await annotateStory(
+    apiKey,
+    story,
+    targetLanguage,
+    nativeLanguage,
+    ancientGreekDialect,
+    ancientGreekFocus,
+    shakespeareanFocus
+  );
+  story = annotatedStory;
+
+  // Single Requirement 10 log per story
+  console.info(
+    `[Story Generation Summary] Story model: ${storyModelUsed}, Annotations model: ${annotModelUsed || 'none (failed or skipped)'} | ` +
+    `Sentences: ${story.sentences.length}, With new_element: ${story.sentences.filter(s => Boolean(s.new_element)).length}, ` +
+    `With >=3 unknowns: ${analysis.sentencesWith3OrMoreUnknowns}, Known vocabulary size: ${cleanWords.length}`
+  );
+
+  story.modelUsed = storyModelUsed;
   return story;
 };
 
@@ -711,8 +982,9 @@ export const generateReviewStory = async (
   story.modelUsed = modelUsed;
 
   // Validation against full known vocabulary for review story (max 5% unknown)
+  const canValidate = cleanWords.length >= MIN_VOCAB_FOR_VALIDATION;
   let validation = validateStoryAgainstVocabulary(story, cleanWords, true);
-  if (!validation.isValid) {
+  if (canValidate && !validation.isValid) {
     console.warn(`[Review Validation] Unknown ratio ${(validation.unknownRatio * 100).toFixed(1)}% > ${(MAX_UNKNOWN_RATIO_REVIEW * 100)}%. Attempting 1 regeneration...`);
     try {
       const unknownWordsList: string[] = [];
@@ -744,8 +1016,10 @@ export const generateReviewStory = async (
     }
   }
 
-  if (!validation.isValid) {
+  if (canValidate && !validation.isValid) {
     story.hasHighUnknownWords = true;
+  } else {
+    story.hasHighUnknownWords = false;
   }
 
   return story;
@@ -771,6 +1045,12 @@ export const normalizeStoryResponse = (data: any, isReview = false, fallbackLeve
   const level_target = source.level_target || data.level_target || fallbackLevel;
   const estimated_vocab_count = String(source.estimated_vocab_count || data.estimated_vocab_count || "0");
   const modelUsed = source.modelUsed || data.modelUsed || undefined;
+  const proper_nouns = Array.isArray(source.proper_nouns)
+    ? source.proper_nouns.map((p: any) => String(p || '').trim()).filter(Boolean)
+    : (Array.isArray(data.proper_nouns) ? data.proper_nouns.map((p: any) => String(p || '').trim()).filter(Boolean) : undefined);
+  const annotationsFailed = source.annotationsFailed !== undefined
+    ? Boolean(source.annotationsFailed)
+    : (data.annotationsFailed !== undefined ? Boolean(data.annotationsFailed) : undefined);
 
   let rawSentences = source.sentences || data.sentences || source.sentence_list || data.sentence_list;
   if (!Array.isArray(rawSentences)) {
@@ -810,7 +1090,8 @@ export const normalizeStoryResponse = (data: any, isReview = false, fallbackLeve
       new_element: String(s?.new_element || s?.new_word || s?.target_word || '').trim(),
       explanation: String(s?.explanation || '').trim(),
       definition_target: String(s?.definition_target || s?.definition || '').trim(),
-      part_of_speech: String(s?.part_of_speech || s?.grammar_class || s?.pos || '').trim()
+      part_of_speech: String(s?.part_of_speech || s?.grammar_class || s?.pos || '').trim(),
+      extraUnknownCount: typeof s?.extraUnknownCount === 'number' ? s.extraUnknownCount : undefined
     };
   }).filter((s: any) => s.original.length > 0);
 
@@ -833,6 +1114,8 @@ export const normalizeStoryResponse = (data: any, isReview = false, fallbackLeve
     estimated_vocab_count,
     new_words_to_add,
     is_review: isReview,
-    modelUsed
+    modelUsed,
+    proper_nouns,
+    annotationsFailed
   };
 };

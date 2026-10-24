@@ -282,7 +282,10 @@ const pt = {
   "srsRealRetention": "Retenção Real em 30 Dias",
   "highUnknownWordsNotice": "Esta história pode ter mais palavras novas que o ideal.",
   "storageQuotaNotice": "O espaço de armazenamento do navegador está cheio. O log de revisões foi reduzido às entradas recentes. Recomendamos exportar um backup para proteger seu progresso.",
-  "onboardingExperimentalWarning": "Idioma experimental: acentuação, transcrições IPA e pronúncia reconstruída podem conter imprecisões."
+  "onboardingExperimentalWarning": "Idioma experimental: acentuação, transcrições IPA e pronúncia reconstruída podem conter imprecisões.",
+  "annotationsFailedNotice": "Não foi possível carregar as anotações gramaticais e fonéticas.",
+  "reannotateBtn": "Anotar de novo",
+  "reannotating": "Anotando..."
 } as const;
 
 export default pt;

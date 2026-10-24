@@ -281,8 +281,11 @@ const fr = {
   "srsEstimated": "estimé",
   "srsRealRetention": "Rétention réelle sur 30 jours",
   "highUnknownWordsNotice": "Cette histoire peut contenir plus de nouveaux mots que prévu.",
-  "storageQuotaNotice": "Le stockage du navigateur est presque plein. Le journal des révisions a été réduit aux entrées récentes. Veuillez exporter une sauvegarde pour protéger vos progrès.",
-  "onboardingExperimentalWarning": "Langue expérimentale : l'accentuation, les transcriptions API et la prononciation reconstituée peuvent comporter des inexactitudes."
+  "storageQuotaNotice": "Le stockage du navigateur est presque plein. Le journal des révisions a été réduit aux entrées récentes. Veuillez exporter une sauvegarde pour proteger vos progrès.",
+  "onboardingExperimentalWarning": "Langue expérimentale : l'accentuation, les transcriptions API et la prononciation reconstituée peuvent comporter des inexactitudes.",
+  "annotationsFailedNotice": "Impossible de charger les annotations grammaticales et phonétiques.",
+  "reannotateBtn": "Annoter à nouveau",
+  "reannotating": "Annotation..."
 } as const;
 
 export default fr;

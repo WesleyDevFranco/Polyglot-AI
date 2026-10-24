@@ -10,11 +10,12 @@ export interface Sentence {
   id: number;
   original: string;
   translation: string;
-  phonetic: string; 
-  new_element: string;
-  explanation: string;
-  definition_target: string; // New field for immersive learning
+  phonetic?: string; 
+  new_element?: string;
+  explanation?: string;
+  definition_target?: string; // Field for immersive learning
   part_of_speech?: string; // Grammatical category: noun, verb, adjective, adverb, phrasal verb, etc.
+  extraUnknownCount?: number; // Unknown words in sentence beyond the first
 }
 
 export interface StoryResponse {
@@ -23,6 +24,8 @@ export interface StoryResponse {
   sentences: Sentence[];
   estimated_vocab_count: string;
   new_words_to_add: string[];
+  proper_nouns?: string[];
+  annotationsFailed?: boolean;
   is_review?: boolean;
   isReopened?: boolean;
   historyTimestamp?: number;

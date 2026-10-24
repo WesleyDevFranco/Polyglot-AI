@@ -12,7 +12,7 @@ import {
   getCardButtonIntervals,
   getWeakWords
 } from './srs';
-import { tokenize, getInvalidNewElementIds } from '../services/geminiService';
+import { tokenize, analyzeSentenceTokens, analyzeStoryVocabulary, extractSentenceProperNouns } from '../services/geminiService';
 import { SRSCard, SRSReviewLogEntry, StoryResponse } from '../types';
 
 const createMockCard = (overrides: Partial<SRSCard> = {}): SRSCard => ({
@@ -329,7 +329,7 @@ describe('SRS SM-2 Algorithm Tests', () => {
     });
   });
 
-  describe('tokenize and getInvalidNewElementIds', () => {
+  describe('In-Code new_element Detection and Tokenization', () => {
     it('tokenize drops elided prefixes and keeps Unicode words > 1 char', () => {
       const tokens = tokenize("L'amico dell'arte e un'ora con qu'est-ce don't a-b");
       expect(tokens).toContain('amico');
@@ -340,46 +340,79 @@ describe('SRS SM-2 Algorithm Tests', () => {
       expect(tokens).not.toContain("dell'");
     });
 
-    it('getInvalidNewElementIds identifies sentences where new_element is fully in knownWords', () => {
+    it('extractSentenceProperNouns includes global proper nouns and middle-of-sentence capitalized words', () => {
+      const globalProper = new Set(['roma']);
+      const sentence = 'Oggi Marco e Giulia visitano Roma con grande entusiasmo.';
+      const proper = extractSentenceProperNouns(sentence, globalProper);
+
+      expect(proper.has('roma')).toBe(true);
+      expect(proper.has('marco')).toBe(true);
+      expect(proper.has('giulia')).toBe(true);
+      // "Oggi" is at sentence start (index 0), so not treated as middle capitalized
+      expect(proper.has('oggi')).toBe(false);
+    });
+
+    it('analyzeSentenceTokens detects the first unknown token as new_element and computes extraUnknownCount', () => {
+      const known = new Set(['l', 'amico', 'compra', 'il', 'pane']);
+      const proper = new Set<string>();
+      const sentence = { id: 1, original: "L'amico compra un delizioso pane fresco." };
+      const analysis = analyzeSentenceTokens(sentence, known, proper);
+
+      // "un", "delizioso", "fresco" are unknown (length > 1)
+      // "un" has length 2
+      expect(analysis.newElement).toBe('un');
+      expect(analysis.unknownTokens).toEqual(['un', 'delizioso', 'fresco']);
+      expect(analysis.extraUnknownCount).toBe(2);
+    });
+
+    it('analyzeSentenceTokens ignores proper nouns and middle capitalized words', () => {
+      const known = new Set(['oggi', 'compra', 'un', 'libro']);
+      const globalProper = new Set(['milano']);
+      const sentence = { id: 2, original: 'Oggi Marco compra un libro fantastico a Milano.' };
+      const analysis = analyzeSentenceTokens(sentence, known, globalProper);
+
+      // Marco (middle-capitalized) and Milano (globalProper) ignored
+      // Only "fantastico" is unknown
+      expect(analysis.newElement).toBe('fantastico');
+      expect(analysis.unknownTokens).toEqual(['fantastico']);
+      expect(analysis.extraUnknownCount).toBe(0);
+    });
+
+    it('analyzeStoryVocabulary identifies sentences with >=3 unknowns and sentences with 0 unknowns', () => {
       const mockStory: StoryResponse = {
-        story_title: 'Test',
+        story_title: 'Test Story',
         level_target: 'A1',
         estimated_vocab_count: '10',
-        new_words_to_add: ['already', 'fresh'],
+        new_words_to_add: [],
+        proper_nouns: ['Marco'],
         sentences: [
           {
             id: 1,
-            original: 'This is already known.',
-            translation: 'Isso já é conhecido.',
-            phonetic: '',
-            new_element: 'already',
-            explanation: '',
-            definition_target: ''
+            original: 'Marco compra una mela rossa fresca.', // unknown: una, mela, rossa, fresca (4 unknowns)
+            translation: 'Marco compra uma maçã vermelha fresca.'
           },
           {
             id: 2,
-            original: 'This is fresh new.',
-            translation: 'Isso é novo.',
-            phonetic: '',
-            new_element: 'fresh',
-            explanation: '',
-            definition_target: ''
+            original: 'Marco parla bene.', // known: parla, bene -> 0 unknowns
+            translation: 'Marco fala bem.'
           },
           {
             id: 3,
-            original: 'No new element here.',
-            translation: 'Sem elemento novo.',
-            phonetic: '',
-            new_element: '',
-            explanation: '',
-            definition_target: ''
+            original: 'Marco legge un libro.', // known: legge, libro; unknown: un (1 unknown)
+            translation: 'Marco lê um livro.'
           }
         ]
       };
 
-      const knownWords = ['this', 'is', 'already', 'known'];
-      const invalid = getInvalidNewElementIds(mockStory, knownWords);
-      expect(invalid).toEqual([1]); // sentence 1 has new_element 'already' which is in knownWords
+      const knownWords = ['parla', 'bene', 'legge', 'libro'];
+      const analysis = analyzeStoryVocabulary(mockStory, knownWords);
+
+      expect(analysis.totalSentences).toBe(3);
+      expect(analysis.sentencesWith3OrMoreUnknowns).toBe(1); // sentence 1 has >= 3 unknowns
+      expect(analysis.sentencesWith0Unknowns).toBe(1); // sentence 2 has 0 unknowns
+      expect(analysis.problematicCount).toBe(2);
+      expect(analysis.ratioWith3OrMore).toBeCloseTo(1 / 3, 2);
+      expect(analysis.ratioWith0).toBeCloseTo(1 / 3, 2);
     });
   });
 

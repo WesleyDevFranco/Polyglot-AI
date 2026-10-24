@@ -282,7 +282,10 @@ const es = {
   "srsRealRetention": "Retención Real en 30 Días",
   "highUnknownWordsNotice": "Esta historia puede tener más palabras nuevas de lo ideal.",
   "storageQuotaNotice": "El almacenamiento del navegador está lleno. El registro de revisiones se redujo a las entradas recientes. Recomendamos exportar una copia de seguridad para proteger su progreso.",
-  "onboardingExperimentalWarning": "Idioma experimental: la acentuación, las transcripciones AFI y la pronunciación reconstruida pueden contener imprecisiones."
+  "onboardingExperimentalWarning": "Idioma experimental: la acentuación, las transcripciones AFI y la pronunciación reconstruida pueden contener imprecisiones.",
+  "annotationsFailedNotice": "No se pudieron cargar las anotaciones gramaticales y fonéticas.",
+  "reannotateBtn": "Anotar de nuevo",
+  "reannotating": "Anotando..."
 } as const;
 
 export default es;

@@ -9,6 +9,7 @@ interface StudyAreaProps {
   loading: boolean;
   onGenerate: () => void;
   onComplete: (story: StoryResponse) => void;
+  onReannotate?: () => Promise<void> | void;
   targetLanguage: string;
   t: any;
   apiKey?: string;
@@ -353,9 +354,20 @@ const SentenceCard: React.FC<{
   );
 };
 
-const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onComplete, targetLanguage, t, apiKey }) => {
+const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onComplete, onReannotate, targetLanguage, t, apiKey }) => {
   const [isPlayingCurrent, setIsPlayingCurrent] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isReannotating, setIsReannotating] = useState(false);
+
+  const handleReannotate = async () => {
+    if (!onReannotate || isReannotating) return;
+    setIsReannotating(true);
+    try {
+      await onReannotate();
+    } finally {
+      setIsReannotating(false);
+    }
+  };
 
   const handlePlayFull = async () => {
     if (!story || isPlayingCurrent) return;
@@ -431,6 +443,35 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
         <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-xl text-amber-700 dark:text-amber-400 text-xs">
           <Info size={15} className="shrink-0 text-amber-600" />
           <span>{t.highUnknownWordsNotice || "Esta história pode ter mais palavras novas que o ideal."}</span>
+        </div>
+      )}
+
+      {story.annotationsFailed && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl text-amber-800 dark:text-amber-300 text-xs">
+          <div className="flex items-center gap-2.5">
+            <Info size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
+            <span>{t.annotationsFailedNotice || "As anotações detalhadas desta história não foram geradas."}</span>
+          </div>
+          {onReannotate && (
+            <button
+              type="button"
+              onClick={handleReannotate}
+              disabled={isReannotating}
+              className="inline-flex items-center gap-1.5 self-start sm:self-auto px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors cursor-pointer text-xs shrink-0"
+            >
+              {isReannotating ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>{t.reannotating || "Anotando..."}</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={13} />
+                  <span>{t.reannotateBtn || "Anotar de novo"}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 

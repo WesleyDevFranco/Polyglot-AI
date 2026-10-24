@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { UserProfile, HistoryItem, CEFRLevel, StoryResponse, UILanguage, StorySize, SRSCard, PersistedSRSCard, SRSBackType, SRSReviewLogEntry } from './types';
-import { generateStory, generateReviewStory, normalizeStoryResponse } from './services/geminiService';
+import { generateStory, generateReviewStory, normalizeStoryResponse, annotateStory } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import StudyArea from './components/StudyArea';
 import History from './components/History';
@@ -443,6 +443,35 @@ const App: React.FC = () => {
     setActiveTab('study');
   };
 
+  const handleReannotateStory = async () => {
+    if (!currentStory || !profile.apiKey) return;
+    try {
+      const effectiveNativeLanguage = profile.nativeLanguage || getNativeLanguageFromUI(profile.uiLanguage);
+      const { story: annotatedStory } = await annotateStory(
+        profile.apiKey,
+        currentStory,
+        profile.targetLanguage,
+        effectiveNativeLanguage,
+        profile.ancientGreekDialect,
+        profile.ancientGreekFocus,
+        profile.shakespeareanFocus
+      );
+      setCurrentStory(annotatedStory);
+      if ((currentStory as any).completedAt || (currentStory as any).timestamp) {
+        setHistory(prev =>
+          prev.map(item =>
+            (item.timestamp && item.timestamp === (currentStory as any).timestamp) ||
+            item.story_title === currentStory.story_title
+              ? { ...item, ...annotatedStory }
+              : item
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Re-annotation failed:", err);
+    }
+  };
+
   const handleExport = () => {
     const compactCards = compactAndFilterPersistedCards(persistedSrsCards, history);
     const data = JSON.stringify({
@@ -717,6 +746,7 @@ const App: React.FC = () => {
               loading={loading}
               onGenerate={handleGenerateStory}
               onComplete={handleCompleteLesson}
+              onReannotate={handleReannotateStory}
               targetLanguage={profile.targetLanguage}
               t={t}
               apiKey={profile.apiKey}

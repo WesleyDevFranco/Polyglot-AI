@@ -282,7 +282,10 @@ const de = {
   "srsRealRetention": "Reale 30-Tage-Behaltensquote",
   "highUnknownWordsNotice": "Diese Geschichte könnte mehr neue Wörter als ideal enthalten.",
   "storageQuotaNotice": "Der Speicherplatz im Browser ist voll. Das Überprüfungsprotokoll wurde auf die letzten Einträge gekürzt. Bitte exportieren Sie ein Backup Ihrer Lernfortschritte.",
-  "onboardingExperimentalWarning": "Experimentelle Sprache: Akzentuierung, IPA-Transkriptionen und rekonstruierte Aussprache können Ungenauigkeiten enthalten."
+  "onboardingExperimentalWarning": "Experimentelle Sprache: Akzentuierung, IPA-Transkriptionen und rekonstruierte Aussprache können Ungenauigkeiten enthalten.",
+  "annotationsFailedNotice": "Grammatikalische und phonetische Anmerkungen konnten nicht geladen werden.",
+  "reannotateBtn": "Erneut annotieren",
+  "reannotating": "Wird annotiert..."
 } as const;
 
 export default de;
