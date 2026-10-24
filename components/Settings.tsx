@@ -63,7 +63,7 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
     }
   };
 
-  const cefrLevels: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+  const cefrLevels: CEFRLevel[] = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const languages = [
     'English', 'Shakespearean English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 
     'Japanese', 'Chinese', 'Russian', 'Latin', 'Modern Greek', 'Ancient Greek'

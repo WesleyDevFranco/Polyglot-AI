@@ -27,7 +27,7 @@ const DEFAULT_PROFILE: UserProfile = {
   name: 'User',
   targetLanguage: 'English',
   nativeLanguage: 'Portuguese',
-  level: 'A1',
+  level: 'Pre-A1',
   knownWords: ['hello', 'world', 'the', 'is', 'a', 'to', 'in', 'and'],
   uiLanguage: 'pt',
   darkMode: false,
@@ -43,11 +43,12 @@ const DEFAULT_PROFILE: UserProfile = {
 };
 
 const calculateLevelFromVocab = (count: number): CEFRLevel => {
-  if (count <= 500) return 'A1';
-  if (count <= 1000) return 'A2';
-  if (count <= 2500) return 'B1';
-  if (count <= 5000) return 'B2';
-  if (count <= 10000) return 'C1';
+  if (count < 500) return 'Pre-A1';
+  if (count < 1200) return 'A1';
+  if (count < 2500) return 'A2';
+  if (count < 4500) return 'B1';
+  if (count < 8500) return 'B2';
+  if (count < 16000) return 'C1';
   return 'C2';
 };
 
@@ -95,7 +96,7 @@ const App: React.FC = () => {
       targetLanguage: data.targetLanguage,
       storySize: 'standard', // Padrão (10 frases)
       knownWords: starter,
-      level: 'A1'
+      level: 'Pre-A1'
     };
     setProfile(newProfile);
     setIsOnboardingOpen(false);
