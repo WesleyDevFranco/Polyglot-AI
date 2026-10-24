@@ -5,25 +5,28 @@ import {
   Area,
   BarChart,
   Bar,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend
 } from 'recharts';
-import { SRSCard } from '../types';
-import { generate30DayRetentionData, RetentionProgressPoint } from '../utils/srs';
+import { SRSCard, SRSReviewLogEntry } from '../types';
+import { generate30DayRetentionData, estimateRetentionRate, RetentionProgressPoint } from '../utils/srs';
 import { TrendingUp, Award, Layers, Sparkles, CheckCircle2, ArrowUpRight, BarChart3, HelpCircle } from 'lucide-react';
 
 interface SRSRetentionChartProps {
   cards: SRSCard[];
   targetLanguage?: string;
+  reviewLogs?: SRSReviewLogEntry[];
   t?: any;
 }
 
 export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
   cards,
   targetLanguage,
+  reviewLogs,
   t = {}
 }) => {
   const [viewMode, setViewMode] = useState<'cumulative' | 'transitions'>('cumulative');
@@ -31,26 +34,34 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
 
   // Compute 30-day time series data
   const data = useMemo(() => {
-    return generate30DayRetentionData(cards, targetLanguage);
-  }, [cards, targetLanguage]);
+    return generate30DayRetentionData(cards, targetLanguage, reviewLogs);
+  }, [cards, targetLanguage, reviewLogs]);
+
+  const fallback = useMemo(() => estimateRetentionRate(cards, reviewLogs), [cards, reviewLogs]);
 
   // Summary statistics
   const currentStats = useMemo(() => {
-    const latest = data[data.length - 1] || { learning: 0, mastered: 0, totalActive: 0, retentionRate: 0 };
-    const first = data[0] || { learning: 0, mastered: 0, totalActive: 0, retentionRate: 0 };
+    const latest = data[data.length - 1] || { learning: 0, mastered: 0, totalActive: 0, retentionRate: null };
+    const first = data[0] || { learning: 0, mastered: 0, totalActive: 0, retentionRate: null };
     
     // Total cards that transitioned to mastered over the 30-day window
     const totalTransitions = data.reduce((acc, point) => acc + (point.graduatedToday || 0), 0);
     const netMasteredGrowth = Math.max(0, latest.mastered - first.mastered);
 
+    // Latest non-null retention rate from rolling days, or fallback estimate
+    const latestRatePoint = [...data].reverse().find(p => p.retentionRate !== null);
+    const effectiveRetentionRate = latestRatePoint ? latestRatePoint.retentionRate : fallback.rate;
+    const isEstimated = latestRatePoint ? false : fallback.isEstimated;
+
     return {
       currentLearning: latest.learning,
       currentMastered: latest.mastered,
       totalActive: latest.totalActive,
-      retentionRate: latest.retentionRate,
+      retentionRate: effectiveRetentionRate,
+      isEstimated,
       totalTransitions: totalTransitions > 0 ? totalTransitions : netMasteredGrowth,
     };
-  }, [data]);
+  }, [data, fallback]);
 
   const hasAnyCards = cards.length > 0;
 
@@ -105,7 +116,9 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
           <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-400">
             <span>{t?.srsRetentionRate || 'Taxa de Retenção'}:</span>
             <span className="font-bold text-slate-700 dark:text-slate-300">
-              {pointData?.retentionRate ?? 0}%
+              {pointData?.retentionRate !== null && pointData?.retentionRate !== undefined
+                ? `${pointData.retentionRate}%`
+                : (t?.srsInsufficientData || 'Dados insuficientes')}
             </span>
           </div>
         </div>
@@ -223,10 +236,12 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
             <Sparkles size={15} className="text-indigo-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 mt-1">
-            {currentStats.retentionRate}%
+            {currentStats.retentionRate !== null ? `${currentStats.retentionRate}%` : (t?.srsInsufficientData || 'Dados insuficientes')}
           </div>
           <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">
-            {t?.srsMemoryEfficiency || 'Eficiência SM-2'}
+            {currentStats.retentionRate !== null
+              ? (currentStats.isEstimated ? `(${t?.srsEstimated || 'Estimado'})` : `(${t?.srsRealRetention || 'Real'})`)
+              : (t?.srsNeedMoreReviews || 'Necessário mais revisões')}
           </p>
         </div>
       </div>
@@ -297,10 +312,21 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
                 />
 
                 <YAxis
+                  yAxisId="left"
                   allowDecimals={false}
                   tickLine={false}
                   axisLine={{ stroke: '#94a3b8', opacity: 0.2 }}
                   tick={{ fill: '#94a3b8', fontSize: 11 }}
+                />
+
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  domain={[0, 100]}
+                  unit="%"
+                  tickLine={false}
+                  axisLine={{ stroke: '#f59e0b', opacity: 0.2 }}
+                  tick={{ fill: '#f59e0b', fontSize: 11 }}
                 />
 
                 <Tooltip content={<CustomTooltip />} />
@@ -313,12 +339,14 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
                   formatter={(value: string) => {
                     if (value === 'mastered') return t?.srsLegendMastered || 'Dominados (Mastered)';
                     if (value === 'learning') return t?.srsLegendLearning || 'Em Aprendizado (Learning)';
+                    if (value === 'retentionRate') return t?.srsRetentionRate || 'Taxa de Retenção (%)';
                     return value;
                   }}
                 />
 
                 {/* Mastered Area (Front / Solid) */}
                 <Area
+                  yAxisId="left"
                   type="monotone"
                   dataKey="mastered"
                   stroke="#10b981"
@@ -330,6 +358,7 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
 
                 {/* Learning Area */}
                 <Area
+                  yAxisId="left"
                   type="monotone"
                   dataKey="learning"
                   stroke="#6366f1"
@@ -337,6 +366,17 @@ export const SRSRetentionChart: React.FC<SRSRetentionChartProps> = ({
                   fillOpacity={1}
                   fill="url(#learningGradient)"
                   activeDot={{ r: 6, stroke: '#6366f1', strokeWidth: 2, fill: '#fff' }}
+                />
+
+                {/* Retention Rate Line (not drawn on null days) */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="retentionRate"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  connectNulls={false}
+                  dot={{ r: 3, fill: '#f59e0b' }}
                 />
               </AreaChart>
             </ResponsiveContainer>

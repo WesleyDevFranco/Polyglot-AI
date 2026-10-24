@@ -63,7 +63,13 @@ export const NATIVE_LANGUAGES: { code: UILanguage; name: string; nativeLabel: st
   { code: 'it', name: 'Italian', nativeLabel: 'Italiano', flag: '🇮🇹' }
 ];
 
-export const TARGET_LANGUAGES = [
+export const EXPERIMENTAL_LANGUAGES = ['Latin', 'Ancient Greek', 'Shakespearean English'];
+
+export const isExperimentalLanguage = (lang?: string): boolean => {
+  return Boolean(lang && EXPERIMENTAL_LANGUAGES.includes(lang));
+};
+
+export const TARGET_LANGUAGES: { id: string; label: string; flag: string; experimental?: boolean }[] = [
   { id: 'English', label: 'English', flag: '🇺🇸' },
   { id: 'Spanish', label: 'Español', flag: '🇪🇸' },
   { id: 'French', label: 'Français', flag: '🇫🇷' },
@@ -73,10 +79,10 @@ export const TARGET_LANGUAGES = [
   { id: 'Japanese', label: '日本語 (Japanese)', flag: '🇯🇵' },
   { id: 'Chinese', label: '中文 (Chinese)', flag: '🇨🇳' },
   { id: 'Russian', label: 'Русский (Russian)', flag: '🇷🇺' },
-  { id: 'Latin', label: 'Latina (Classical Latin)', flag: '🏛️' },
+  { id: 'Latin', label: 'Latina (Classical Latin) ⚠️', flag: '🏛️', experimental: true },
   { id: 'Modern Greek', label: 'Ελληνικά (Modern Greek)', flag: '🇬🇷' },
-  { id: 'Ancient Greek', label: 'Ancient Greek', flag: '🏺' },
-  { id: 'Shakespearean English', label: 'Shakespearean English', flag: '📜' }
+  { id: 'Ancient Greek', label: 'Ancient Greek ⚠️', flag: '🏺', experimental: true },
+  { id: 'Shakespearean English', label: 'Shakespearean English ⚠️', flag: '📜', experimental: true }
 ];
 
 export const STARTER_VOCABULARY: Record<string, string[]> = {

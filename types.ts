@@ -14,6 +14,7 @@ export interface Sentence {
   new_element: string;
   explanation: string;
   definition_target: string; // New field for immersive learning
+  part_of_speech?: string; // Grammatical category: noun, verb, adjective, adverb, phrasal verb, etc.
 }
 
 export interface StoryResponse {
@@ -25,6 +26,8 @@ export interface StoryResponse {
   is_review?: boolean;
   isReopened?: boolean;
   historyTimestamp?: number;
+  hasHighUnknownWords?: boolean;
+  modelUsed?: string;
 }
 
 export interface UserProfile {
@@ -47,6 +50,7 @@ export interface UserProfile {
   apiKey?: string;
   srsBackType?: SRSBackType;
   srsDailyGoal?: number;
+  dailyNewCardsLimit?: number; // default 0; 0 = no limit
 }
 
 export interface HistoryItem extends StoryResponse {
@@ -59,6 +63,9 @@ export interface HistoryItem extends StoryResponse {
 export type SRSBackType = 'full_translation' | 'element_translation' | 'target_definition';
 
 export type SRSCardRating = 1 | 2 | 3 | 4; // 1 = Again, 2 = Hard, 3 = Good, 4 = Easy
+
+// Compact review log entry tuple: [cardId, timestamp, rating, previousIntervalDays]
+export type SRSReviewLogEntry = [cardId: string, timestamp: number | string, rating: SRSCardRating, previousIntervalDays: number];
 
 export interface PersistedSRSCard {
   id: string;
@@ -73,6 +80,7 @@ export interface PersistedSRSCard {
   interval: number; // in days
   dueDate: number; // timestamp (ms)
   lastReviewed?: number; // timestamp (ms)
+  firstReviewedAt?: number; // timestamp (ms) when card had its first review
   learningAt?: number; // timestamp (ms) when card started learning
   masteredAt?: number; // timestamp (ms) when card graduated to mastered
   // Orphan card fallback: retained if story is removed from history

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { StoryResponse, Sentence } from '../types';
-import { Volume2, ChevronDown, ChevronUp, CheckCircle2, Loader2, Sparkles, Languages, Music, PlayCircle, Info, Download, RefreshCw, Book, BookOpen } from 'lucide-react';
+import { Volume2, ChevronDown, ChevronUp, CheckCircle2, Loader2, Sparkles, Languages, Music, PlayCircle, Info, Download, RefreshCw, Book, BookOpen, AlertTriangle } from 'lucide-react';
+import { isExperimentalLanguage } from '../utils/starterVocab';
 
 interface StudyAreaProps {
   story: StoryResponse | null;
@@ -232,37 +233,38 @@ const SentenceCard: React.FC<{
       const candidates: string[] = [];
 
       if (sentence.explanation) {
-        // Strip quotes
+        // Strip quotes and explanatory parentheses
         const rawClean = sentence.explanation.replace(/[«»""'']/g, '').trim();
-        // Remove text in parentheses: e.g. "biblioteca (local...)" -> "biblioteca"
         const noParens = rawClean.replace(/\([^)]*\)/g, '').trim();
-        // Take part before punctuation delimiters (:, -, —, –, /, ;)
+        // Head before punctuation delimiters (:, -, —, –, /, ;)
         const head = noParens.split(/[:;\-—–\/]/)[0].trim();
+
         if (head && head.length >= 2) candidates.push(head);
         if (noParens && noParens.length >= 2 && noParens !== head) candidates.push(noParens);
 
-        // If head has multiple words, also check individual words of length >= 3
-        const words = head.split(/\s+/).filter(w => w.length >= 3);
+        // Individual words from head of length >= 3
+        const words = head.split(/\s+/).map(w => w.replace(/[.,!?;:()]/g, '').trim()).filter(w => w.length >= 3);
         for (const w of words) {
           if (!candidates.includes(w)) candidates.push(w);
         }
       }
 
-      // Also check if new_element itself appears (for loanwords / cognates)
+      // Check cognates/loanwords if new_element appears as a distinct word in translation
       if (sentence.new_element && sentence.new_element.trim().length >= 2) {
         const elemTrimmed = sentence.new_element.trim();
         if (!candidates.includes(elemTrimmed)) candidates.push(elemTrimmed);
       }
 
-      for (const cand of candidates) {
-        const escaped = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const boundaryRegex = new RegExp(`(?<![\\p{L}\\p{N}])(${escaped})(?![\\p{L}\\p{N}])`, 'giu');
-        const hasBoundaryMatch = boundaryRegex.test(sentence.translation);
-        const hasPlainMatch = hasBoundaryMatch ? true : new RegExp(`(${escaped})`, 'gi').test(sentence.translation);
+      // Prioritize longer phrase candidates first to avoid greedy partial matching
+      const sortedCandidates = [...candidates].sort((a, b) => b.length - a.length);
 
-        if (hasBoundaryMatch || hasPlainMatch) {
-          const regexToUse = hasBoundaryMatch ? boundaryRegex : new RegExp(`(${escaped})`, 'gi');
-          const parts = sentence.translation.split(regexToUse);
+      for (const cand of sortedCandidates) {
+        const escaped = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // STRICT Unicode word boundary check: never match inside other words (e.g. 'scudo' inside 'escudo')
+        const boundaryRegex = new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])(${escaped})(?![\\p{L}\\p{M}\\p{N}])`, 'giu');
+        
+        if (boundaryRegex.test(sentence.translation)) {
+          const parts = sentence.translation.split(boundaryRegex);
           if (Array.isArray(parts) && parts.length > 1) {
             return parts.map((part, index) => {
               if (part.toLowerCase() === cand.toLowerCase()) {
@@ -322,7 +324,16 @@ const SentenceCard: React.FC<{
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {!isReview && sentence.new_element && (
                     <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
-                      <p className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-widest mb-1 flex items-center gap-1"><Sparkles size={12} /> {t_app.plusOneElement || "The \"+1\" Element"}</p>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <p className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-widest flex items-center gap-1">
+                          <Sparkles size={12} /> {t_app.plusOneElement || "The \"+1\" Element"}
+                        </p>
+                        {sentence.part_of_speech && (
+                          <span className="text-[10px] font-semibold bg-amber-200/80 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                            {sentence.part_of_speech}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-amber-900 dark:text-amber-200 leading-relaxed font-semibold">{sentence.new_element}: <span className="font-normal">{sentence.explanation}</span></p>
                     </div>
                   )}
@@ -404,9 +415,28 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {isExperimentalLanguage(targetLanguage) && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl text-amber-800 dark:text-amber-300 text-xs leading-relaxed">
+          <AlertTriangle size={16} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <div>
+            <span className="font-bold mr-1.5 uppercase tracking-wider text-[10px] bg-amber-200/70 dark:bg-amber-900/60 px-1.5 py-0.5 rounded">
+              {t.experimentalLangBadge || "Experimental"}
+            </span>
+            {t.experimentalLangNote || "Latin, Ancient Greek, and Shakespearean English are experimental. Accents, IPA, and reconstructed pronunciation may contain inaccuracies."}
+          </div>
+        </div>
+      )}
+
+      {story.hasHighUnknownWords && (
+        <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-xl text-amber-700 dark:text-amber-400 text-xs">
+          <Info size={15} className="shrink-0 text-amber-600" />
+          <span>{t.highUnknownWordsNotice || "Esta história pode ter mais palavras novas que o ideal."}</span>
+        </div>
+      )}
+
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">{story.level_target || 'Advanced'} {t.level || 'Level'}</span>
             {story.is_review && (
               <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1"><RefreshCw size={10} /> {t.reviewMode || 'Review Mode'}</span>
@@ -414,6 +444,12 @@ const StudyArea: React.FC<StudyAreaProps> = ({ story, loading, onGenerate, onCom
             {story.isReopened && (
               <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1">
                 <BookOpen size={10} /> {t.reopenedStoryBadge || "Histórico / Concluída"}
+              </span>
+            )}
+            {story.modelUsed && (
+              <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-mono px-2 py-1 rounded border border-slate-200 dark:border-slate-700 flex items-center gap-1" title="Model Used">
+                <Sparkles size={10} className="text-indigo-500" />
+                {story.modelUsed}
               </span>
             )}
           </div>

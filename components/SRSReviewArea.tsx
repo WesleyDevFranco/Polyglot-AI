@@ -23,7 +23,7 @@ import {
   Clock,
   X
 } from 'lucide-react';
-import { SRSCard, SRSCardRating, SRSBackType, Sentence, StoryResponse } from '../types';
+import { SRSCard, SRSCardRating, SRSBackType, Sentence, StoryResponse, SRSReviewLogEntry } from '../types';
 import { 
   calculateNextInterval, 
   getCardButtonIntervals, 
@@ -43,6 +43,9 @@ interface SRSReviewAreaProps {
   srsBackType: SRSBackType;
   onChangeBackType: (type: SRSBackType) => void;
   onNavigateToStudy: () => void;
+  dailyNewCardsLimit?: number;
+  reviewLogs?: SRSReviewLogEntry[];
+  onLogReview?: (entry: SRSReviewLogEntry) => void;
   t: any;
 }
 
@@ -79,6 +82,9 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
   srsBackType,
   onChangeBackType,
   onNavigateToStudy,
+  dailyNewCardsLimit = 0,
+  reviewLogs,
+  onLogReview,
   t
 }) => {
   const [sessionActive, setSessionActive] = useState(false);
@@ -99,14 +105,14 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
     return cards.filter(c => !c.targetLanguage || c.targetLanguage === targetLanguage);
   }, [cards, targetLanguage]);
 
-  // Overall stats
+  // Overall stats taking into account daily new cards limit
   const stats = useMemo(() => {
-    return computeSRSStats(languageCards, targetLanguage);
-  }, [languageCards, targetLanguage]);
+    return computeSRSStats(languageCards, targetLanguage, dailyNewCardsLimit);
+  }, [languageCards, targetLanguage, dailyNewCardsLimit]);
 
-  const retentionRate = useMemo(() => {
-    return estimateRetentionRate(languageCards);
-  }, [languageCards]);
+  const retention = useMemo(() => {
+    return estimateRetentionRate(languageCards, reviewLogs);
+  }, [languageCards, reviewLogs]);
 
   // Available unique stories for filter
   const storiesList = useMemo(() => {
@@ -131,8 +137,8 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
       queue = [...languageCards].sort(() => Math.random() - 0.5);
       setCramMode(true);
     } else {
-      // Standard SRS due cards
-      queue = getDueCards(languageCards, targetLanguage);
+      // Standard SRS due cards taking daily new cards limit into account
+      queue = getDueCards(languageCards, targetLanguage, dailyNewCardsLimit);
       setCramMode(false);
     }
 
@@ -157,8 +163,11 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
   const handleRate = useCallback((rating: SRSCardRating) => {
     if (!currentCard) return;
 
-    const result = calculateNextInterval(currentCard, rating);
     const now = Date.now();
+    const prevInterval = currentCard.interval || 0;
+    const isFirstReview = (currentCard.reps || 0) === 0 && !currentCard.firstReviewedAt;
+    const result = calculateNextInterval(currentCard, rating, now);
+
     const updatedCard: SRSCard = {
       ...currentCard,
       interval: result.interval,
@@ -168,11 +177,13 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
       state: result.state,
       dueDate: result.dueDate,
       lastReviewed: now,
+      firstReviewedAt: currentCard.firstReviewedAt || (isFirstReview ? now : undefined),
       learningAt: currentCard.learningAt || (result.state === 'learning' || result.state === 'review' ? now : undefined),
       masteredAt: result.state === 'mastered' ? (currentCard.masteredAt || now) : undefined
     };
 
     onUpdateCard(updatedCard);
+    onLogReview?.([currentCard.id, now, rating, prevInterval]);
 
     setSessionStats(prev => ({
       reviewed: prev.reviewed + 1,
@@ -199,7 +210,7 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
       // End of session
       setCurrentIndex(reviewQueue.length);
     }
-  }, [currentCard, currentIndex, reviewQueue, onUpdateCard]);
+  }, [currentCard, currentIndex, reviewQueue, onUpdateCard, onLogReview]);
 
   // Keyboard navigation (Space/Enter to flip, 1-4 to rate)
   useEffect(() => {
@@ -820,7 +831,7 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
                 {stats.masteredCards}
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                Intervalo &gt; 21 dias ({retentionRate}% retenção)
+                Intervalo &gt; 21 dias ({retention.rate !== null ? `${retention.rate}%` : '85%'} retenção)
               </p>
             </div>
           </div>
@@ -886,6 +897,7 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
           <SRSRetentionChart 
             cards={languageCards} 
             targetLanguage={targetLanguage} 
+            reviewLogs={reviewLogs}
             t={t} 
           />
 

@@ -6,7 +6,7 @@ import { VocabularyExplorer } from './VocabularyExplorer';
 import { ApiKeyTutorialModal } from './ApiKeyTutorialModal';
 import { JsonBackupTutorialModal } from './JsonBackupTutorialModal';
 
-import { STARTER_VOCABULARY, resolveNativeLanguage } from '../utils/starterVocab';
+import { STARTER_VOCABULARY, resolveNativeLanguage, isExperimentalLanguage } from '../utils/starterVocab';
 
 interface SettingsProps {
   profile: UserProfile;
@@ -148,6 +148,19 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
               </select>
             </div>
           </div>
+
+          {/* Experimental Language Notice */}
+          {isExperimentalLanguage(formData.targetLanguage) && (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <Sparkles size={14} className="text-amber-600 dark:text-amber-400" />
+                <span>{t.experimentalLangBadge || "Idioma Experimental"}</span>
+              </div>
+              <p className="leading-relaxed">
+                {t.experimentalLangNote || "Acentuação, transcrições fonéticas (IPA) e pronúncia reconstruída podem conter imprecisões históricas ou ortográficas."}
+              </p>
+            </div>
+          )}
 
           {/* Conditional Style Selection for Shakespearean English */}
           {formData.targetLanguage === 'Shakespearean English' && (
@@ -331,6 +344,47 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
               className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
             />
             <span className="text-xs text-slate-400">{t.dailyGoalTarget || "lessons / day"}</span>
+          </div>
+        </div>
+
+        {/* SRS Daily New Cards Limit */}
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <Layers size={20} className="text-indigo-600 dark:text-indigo-400" /> {t.dailyNewCardsLimitTitle || "Limite Diário de Novos Cards SRS"}
+            </h3>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+              {(formData.dailyNewCardsLimit === undefined ? 0 : formData.dailyNewCardsLimit) === 0
+                ? (t.noLimit || "Sem limite")
+                : `${formData.dailyNewCardsLimit ?? 0} ${t.cardsPerDay || "cards / dia"}`}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t.dailyNewCardsLimitDesc || "Controla a introdução de novas frases por dia. Cards de revisão devidos nunca são limitados."}
+          </p>
+
+          <div className="grid grid-cols-4 gap-2.5">
+            {[0, 10, 20, 30].map((limit) => {
+              const currentVal = formData.dailyNewCardsLimit === undefined ? 0 : formData.dailyNewCardsLimit;
+              const isSelected = currentVal === limit;
+              return (
+                <button
+                  key={limit}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, dailyNewCardsLimit: limit })}
+                  className={`py-3 px-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-300'
+                  }`}
+                >
+                  <span>{limit === 0 ? "∞" : limit}</span>
+                  <span className="text-[10px] font-normal opacity-80">
+                    {limit === 0 ? `${t.noLimit || "Sem limite"} (${t.default || "Padrão"})` : (t.cards || "cards")}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

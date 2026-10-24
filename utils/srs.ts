@@ -1,4 +1,4 @@
-import { HistoryItem, Sentence, SRSCard, PersistedSRSCard, SRSCardRating, SRSStats } from '../types';
+import { HistoryItem, Sentence, SRSCard, PersistedSRSCard, SRSCardRating, SRSStats, SRSReviewLogEntry } from '../types';
 
 export const DEFAULT_EASE_FACTOR = 2.5;
 
@@ -59,6 +59,7 @@ export const toPersistedCard = (
   };
 
   if (card.lastReviewed !== undefined) persisted.lastReviewed = card.lastReviewed;
+  if (card.firstReviewedAt !== undefined) persisted.firstReviewedAt = card.firstReviewedAt;
   if (card.learningAt !== undefined) persisted.learningAt = card.learningAt;
   if (card.masteredAt !== undefined) persisted.masteredAt = card.masteredAt;
 
@@ -222,11 +223,40 @@ export const syncCardsFromHistory = (
 };
 
 /**
- * Calculates the next SRS interval, ease factor, and due date following the SM-2 algorithm
+ * Returns local 00:00:00.000 timestamp for the given timestamp/date
+ */
+export const getStartOfDay = (dateInput: Date | number = Date.now()): number => {
+  const d = new Date(dateInput);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+/**
+ * Calculates due date:
+ * - Sub-day intervals (< 1 day) stay relative to now (e.g. 10 minutes)
+ * - Intervals >= 1 day are set to 00:00 local time of the target day (today + interval)
+ */
+export const getTargetDueDate = (intervalDays: number, now: number = Date.now()): number => {
+  if (intervalDays < 1) {
+    return now + Math.round(intervalDays * 86400 * 1000);
+  }
+  const target = new Date(now);
+  target.setDate(target.getDate() + Math.round(intervalDays));
+  target.setHours(0, 0, 0, 0);
+  return target.getTime();
+};
+
+/**
+ * Calculates the next SRS interval, ease factor, and due date following the SM-2 algorithm:
+ * - Hard, Good, Easy with interval >= 1 day: dueDate at 00:00 local time of (today + interval)
+ * - Again: 10 minutes from now
+ * - Hard on new card (reps === 0): stays in 'learning', rescheduled in 10 minutes, no lapse added, easeFactor penalised by 0.15
+ * - Good on new card (reps === 0): graduates to 1 day
  */
 export const calculateNextInterval = (
   card: SRSCard,
-  rating: SRSCardRating
+  rating: SRSCardRating,
+  now: number = Date.now()
 ): {
   interval: number;
   easeFactor: number;
@@ -235,7 +265,6 @@ export const calculateNextInterval = (
   state: SRSCard['state'];
   dueDate: number;
 } => {
-  const now = Date.now();
   let easeFactor = card.easeFactor || DEFAULT_EASE_FACTOR;
   let reps = card.reps || 0;
   let lapses = card.lapses || 0;
@@ -257,13 +286,18 @@ export const calculateNextInterval = (
     case 2: { // Hard / Difícil
       easeFactor = Math.max(1.3, easeFactor - 0.15);
       if (reps === 0) {
-        interval = 1;
+        // Differentiate Hard from Good on new card:
+        // Does not graduate, remains in learning, rescheduled in 10 minutes, no lapse added
+        interval = 0.007; // ~10 minutes
+        state = 'learning';
+        dueDate = now + 10 * 60 * 1000;
+        reps = 0;
       } else {
         interval = Math.max(1, Math.round(Math.max(1, interval) * 1.2));
+        reps += 1;
+        state = interval >= 21 ? 'mastered' : 'review';
+        dueDate = getTargetDueDate(interval, now);
       }
-      reps += 1;
-      state = interval >= 21 ? 'mastered' : 'review';
-      dueDate = now + Math.round(interval * 86400 * 1000);
       break;
     }
 
@@ -277,7 +311,7 @@ export const calculateNextInterval = (
       }
       reps += 1;
       state = interval >= 21 ? 'mastered' : 'review';
-      dueDate = now + Math.round(interval * 86400 * 1000);
+      dueDate = getTargetDueDate(interval, now);
       break;
     }
 
@@ -292,7 +326,7 @@ export const calculateNextInterval = (
       }
       reps += 1;
       state = interval >= 21 ? 'mastered' : 'review';
-      dueDate = now + Math.round(interval * 86400 * 1000);
+      dueDate = getTargetDueDate(interval, now);
       break;
     }
   }
@@ -329,7 +363,7 @@ export const formatIntervalLabel = (intervalInDays: number): string => {
 };
 
 /**
- * Calculates preview labels for each rating button on a card
+ * Calculates preview labels for each rating button on a card consistent with actual rules
  */
 export const getCardButtonIntervals = (card: SRSCard): Record<SRSCardRating, string> => {
   return {
@@ -341,19 +375,57 @@ export const getCardButtonIntervals = (card: SRSCard): Record<SRSCardRating, str
 };
 
 /**
- * Filters cards that are due for review today or newly introduced (no daily goal limit)
- * Order: persisted cards due by dueDate ascending; virtual/new cards by storyTimestamp ascending then sentenceId
+ * Filters cards that are due for review today or newly introduced:
+ * - Review cards due (dueDate <= now) are never limited
+ * - New cards ('new') are limited by dailyNewCardsLimit (default 0, 0 = unlimited)
+ *   counting how many cards had their first review today
  */
-export const getDueCards = (cards: SRSCard[], targetLanguage?: string): SRSCard[] => {
-  const now = Date.now();
-  const filtered = cards.filter(card => {
+export const getDueCards = (
+  cards: SRSCard[],
+  targetLanguage?: string,
+  dailyNewCardsLimit = 0,
+  now: number = Date.now()
+): SRSCard[] => {
+  const startOfTodayMs = getStartOfDay(now);
+
+  const langCards = cards.filter(card => {
     if (targetLanguage && card.targetLanguage && card.targetLanguage !== targetLanguage) {
       return false;
     }
-    return card.state === 'new' || card.dueDate <= now;
+    return true;
   });
 
-  return filtered.sort((a, b) => {
+  // Count how many new cards were reviewed today for the first time
+  const newCardsReviewedToday = langCards.filter(
+    c => c.firstReviewedAt && c.firstReviewedAt >= startOfTodayMs
+  ).length;
+
+  const remainingNewSlots = dailyNewCardsLimit > 0
+    ? Math.max(0, dailyNewCardsLimit - newCardsReviewedToday)
+    : Infinity;
+
+  // Review cards due are never limited
+  const reviewCardsDue = langCards.filter(
+    c => c.state !== 'new' && c.dueDate <= now
+  );
+
+  // New cards sorted by oldest story first, then sentenceId
+  const newCardsAll = langCards
+    .filter(c => c.state === 'new')
+    .sort((a, b) => {
+      if (a.storyTimestamp !== b.storyTimestamp) {
+        return (a.storyTimestamp || 0) - (b.storyTimestamp || 0);
+      }
+      return (a.sentenceId ?? 0) - (b.sentenceId ?? 0);
+    });
+
+  const availableNewCards = remainingNewSlots > 0
+    ? newCardsAll.slice(0, remainingNewSlots)
+    : [];
+
+  const combined = [...reviewCardsDue, ...availableNewCards];
+
+  return combined.sort((a, b) => {
     // Prioritize learning cards first, then review due, then new cards, then mastered
     const order: Record<string, number> = { learning: 0, review: 1, new: 2, mastered: 3 };
     const orderA = order[a.state] ?? 1;
@@ -362,7 +434,6 @@ export const getDueCards = (cards: SRSCard[], targetLanguage?: string): SRSCard[
       return orderA - orderB;
     }
 
-    // For new cards: stable story order (oldest to newest story, then sentenceId)
     if (a.state === 'new' && b.state === 'new') {
       if (a.storyTimestamp !== b.storyTimestamp) {
         return (a.storyTimestamp || 0) - (b.storyTimestamp || 0);
@@ -370,27 +441,29 @@ export const getDueCards = (cards: SRSCard[], targetLanguage?: string): SRSCard[
       return (a.sentenceId ?? 0) - (b.sentenceId ?? 0);
     }
 
-    // For persisted cards due: dueDate crescente
     return a.dueDate - b.dueDate;
   });
 };
 
 /**
- * Computes high-level statistics of the SRS deck (no daily goal limit)
+ * Computes high-level statistics of the SRS deck taking into account the daily new card limit
  */
-export const computeSRSStats = (cards: SRSCard[], targetLanguage?: string): SRSStats => {
-  const now = Date.now();
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const startOfTodayMs = startOfToday.getTime();
+export const computeSRSStats = (
+  cards: SRSCard[],
+  targetLanguage?: string,
+  dailyNewCardsLimit = 0,
+  now: number = Date.now()
+): SRSStats => {
+  const startOfTodayMs = getStartOfDay(now);
 
   let totalCards = 0;
-  let dueToday = 0;
-  let newCards = 0;
+  let totalNewInDeck = 0;
   let learningCards = 0;
   let reviewCards = 0;
   let masteredCards = 0;
   let reviewedTodayCount = 0;
+  let newReviewedTodayCount = 0;
+  let reviewDueCount = 0;
 
   cards.forEach(card => {
     if (targetLanguage && card.targetLanguage && card.targetLanguage !== targetLanguage) {
@@ -400,10 +473,9 @@ export const computeSRSStats = (cards: SRSCard[], targetLanguage?: string): SRSS
     totalCards += 1;
 
     if (card.state === 'new') {
-      newCards += 1;
-      dueToday += 1;
+      totalNewInDeck += 1;
     } else if (card.dueDate <= now) {
-      dueToday += 1;
+      reviewDueCount += 1;
     }
 
     if (card.state === 'learning') learningCards += 1;
@@ -413,12 +485,22 @@ export const computeSRSStats = (cards: SRSCard[], targetLanguage?: string): SRSS
     if (card.lastReviewed && card.lastReviewed >= startOfTodayMs) {
       reviewedTodayCount += 1;
     }
+    if (card.firstReviewedAt && card.firstReviewedAt >= startOfTodayMs) {
+      newReviewedTodayCount += 1;
+    }
   });
+
+  const remainingNewSlots = dailyNewCardsLimit > 0
+    ? Math.max(0, dailyNewCardsLimit - newReviewedTodayCount)
+    : totalNewInDeck;
+
+  const newCardsQueuedToday = Math.min(totalNewInDeck, remainingNewSlots);
+  const dueToday = reviewDueCount + newCardsQueuedToday;
 
   return {
     totalCards,
     dueToday,
-    newCards,
+    newCards: newCardsQueuedToday,
     learningCards,
     reviewCards,
     masteredCards,
@@ -426,12 +508,53 @@ export const computeSRSStats = (cards: SRSCard[], targetLanguage?: string): SRSS
   };
 };
 
+export const MAX_REVIEW_LOG_ENTRIES = 8000;
+
 /**
- * Calculates estimated retention rate based on successful reps vs lapses
+ * Calculates real retention rate from review logs:
+ * Among reviews of cards that already had interval >= 1 day, the fraction with rating >= 2 (not Again) in the last 30 days.
  */
-export const estimateRetentionRate = (cards: SRSCard[]): number => {
+export const calculateRealRetentionRate = (
+  reviewLogs?: SRSReviewLogEntry[],
+  days = 30,
+  now = Date.now()
+): { rate: number; count: number } | null => {
+  if (!Array.isArray(reviewLogs) || reviewLogs.length === 0) return null;
+
+  const cutoff = now - days * 24 * 60 * 60 * 1000;
+  const eligible = reviewLogs.filter(([_, timestamp, __, prevInterval]) => {
+    const time = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+    return time >= cutoff && prevInterval >= 1;
+  });
+
+  if (eligible.length < 5) {
+    return null;
+  }
+
+  const successful = eligible.filter(([_, __, rating]) => rating >= 2);
+  const rate = Math.round((successful.length / eligible.length) * 100);
+  return { rate, count: eligible.length };
+};
+
+/**
+ * Calculates retention rate:
+ * - Uses real review logs if available and sufficient data exists
+ * - Falls back to card state estimation if no logs, marking isEstimated: true
+ * - Returns rate: null if insufficient data (< 5 reviews)
+ */
+export const estimateRetentionRate = (
+  cards: SRSCard[],
+  reviewLogs?: SRSReviewLogEntry[]
+): { rate: number | null; isEstimated: boolean } => {
+  const real = calculateRealRetentionRate(reviewLogs);
+  if (real !== null) {
+    return { rate: real.rate, isEstimated: false };
+  }
+
   const reviewedCards = cards.filter(c => c.reps > 0 || c.lapses > 0);
-  if (reviewedCards.length === 0) return 90; // baseline
+  if (reviewedCards.length < 5) {
+    return { rate: null, isEstimated: true };
+  }
 
   let totalWeight = 0;
   let successWeight = 0;
@@ -442,9 +565,9 @@ export const estimateRetentionRate = (cards: SRSCard[]): number => {
     successWeight += c.reps;
   });
 
-  if (totalWeight === 0) return 90;
-  const rate = Math.round((successWeight / totalWeight) * 100);
-  return Math.max(60, Math.min(99, rate));
+  if (totalWeight === 0) return { rate: null, isEstimated: true };
+  const rate = Math.max(60, Math.min(99, Math.round((successWeight / totalWeight) * 100)));
+  return { rate, isEstimated: true };
 };
 
 export interface RetentionProgressPoint {
@@ -456,15 +579,19 @@ export interface RetentionProgressPoint {
   mastered: number;
   totalActive: number;
   graduatedToday: number;
-  retentionRate: number;
+  retentionRate: number | null;
+  isEstimated?: boolean;
 }
 
 /**
- * Generates a 30-day time series tracking cards moving from Learning to Mastered
+ * Generates a 30-day time series tracking cards moving from Learning to Mastered.
+ * When review logs or masteredAt are available, uses real transition timestamps instead of fabricated dates.
+ * Computes retentionRate for each day over the 30-day window ending on that day (or null if < 5 reviews).
  */
 export const generate30DayRetentionData = (
   cards: SRSCard[],
-  targetLanguage?: string
+  targetLanguage?: string,
+  reviewLogs?: SRSReviewLogEntry[]
 ): RetentionProgressPoint[] => {
   const filtered = cards.filter(c => !targetLanguage || !c.targetLanguage || c.targetLanguage === targetLanguage);
   const now = Date.now();
@@ -473,6 +600,20 @@ export const generate30DayRetentionData = (
   const endOfToday = new Date();
   endOfToday.setHours(23, 59, 59, 999);
   const endOfTodayMs = endOfToday.getTime();
+
+  // If logs exist, build a map of exact mastered timestamps
+  // Mastered heuristic from logs: rating >= 3 and prevInterval * 2 >= 21
+  const masteredDatesFromLogs = new Map<string, number>();
+  if (Array.isArray(reviewLogs)) {
+    reviewLogs.forEach(([cardId, timestamp, rating, prevInterval]) => {
+      if (rating >= 3 && prevInterval * 2 >= 21) {
+        const time = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+        if (!masteredDatesFromLogs.has(cardId) || time < masteredDatesFromLogs.get(cardId)!) {
+          masteredDatesFromLogs.set(cardId, time);
+        }
+      }
+    });
+  }
 
   const dataPoints: RetentionProgressPoint[] = [];
 
@@ -493,20 +634,20 @@ export const generate30DayRetentionData = (
     let graduatedToday = 0;
 
     filtered.forEach(card => {
-      const cardCreated = card.storyTimestamp || (now - 25 * ONE_DAY_MS);
+      const cardCreated = card.storyTimestamp || card.firstReviewedAt || (now - 25 * ONE_DAY_MS);
       
       // Check if card existed on this day
       if (cardCreated <= dayEndMs) {
         const isMasteredNow = card.state === 'mastered';
         
-        // Determine graduation timestamp
         let graduationTime: number | null = null;
         if (card.masteredAt) {
           graduationTime = card.masteredAt;
+        } else if (masteredDatesFromLogs.has(card.id)) {
+          graduationTime = masteredDatesFromLogs.get(card.id)!;
         } else if (isMasteredNow) {
-          // If mastered but no masteredAt recorded yet, infer from lastReviewed or story creation
-          graduationTime = card.lastReviewed || (cardCreated + 14 * ONE_DAY_MS);
-          if (graduationTime > now) graduationTime = now;
+          // If no logs exist, use lastReviewed if valid, without fabricating +14 days
+          graduationTime = card.lastReviewed || null;
         }
 
         if (graduationTime !== null && graduationTime <= dayEndMs) {
@@ -515,14 +656,36 @@ export const generate30DayRetentionData = (
             graduatedToday++;
           }
         } else {
-          // Active in learning or review
           learningCount++;
         }
       }
     });
 
     const totalActive = learningCount + masteredCount;
-    const retentionRate = totalActive > 0 ? Math.round((masteredCount / totalActive) * 100) : 0;
+
+    // Rolling 30-day window ending on this day
+    const windowStartMs = dayEndMs - 30 * ONE_DAY_MS;
+    let dayRetentionRate: number | null = null;
+    let isDayEstimated = false;
+
+    if (Array.isArray(reviewLogs) && reviewLogs.length > 0) {
+      const eligible = reviewLogs.filter(([_, timestamp, __, prevInterval]) => {
+        const time = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+        return time >= windowStartMs && time <= dayEndMs && prevInterval >= 1;
+      });
+
+      if (eligible.length >= 5) {
+        const successful = eligible.filter(([_, __, rating]) => rating >= 2);
+        dayRetentionRate = Math.round((successful.length / eligible.length) * 100);
+        isDayEstimated = false;
+      } else {
+        dayRetentionRate = null;
+        isDayEstimated = true;
+      }
+    } else {
+      dayRetentionRate = null;
+      isDayEstimated = true;
+    }
 
     dataPoints.push({
       date: dateLabel,
@@ -533,9 +696,82 @@ export const generate30DayRetentionData = (
       mastered: masteredCount,
       totalActive,
       graduatedToday,
-      retentionRate
+      retentionRate: dayRetentionRate,
+      isEstimated: isDayEstimated
     });
   }
 
   return dataPoints;
+};
+
+/**
+ * Extracts weak words from SRS cards for priority reinforcement in story generation:
+ * - Cards in targetLanguage that are in 'learning', have lapses > 0, or had Again/Hard in last 14 days
+ * - Ordered from weakest to strongest
+ */
+export const getWeakWords = (
+  cards: SRSCard[],
+  targetLanguage: string,
+  reviewLogs?: SRSReviewLogEntry[],
+  now: number = Date.now()
+): string[] => {
+  const fourteenDaysAgo = now - 14 * 24 * 60 * 60 * 1000;
+
+  // Build card rating stats from logs if available
+  const recentRatingsByCard = new Map<string, { againCount: number; hardCount: number }>();
+  if (Array.isArray(reviewLogs)) {
+    reviewLogs.forEach(([cardId, timestamp, rating]) => {
+      const time = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+      if (time >= fourteenDaysAgo) {
+        const current = recentRatingsByCard.get(cardId) || { againCount: 0, hardCount: 0 };
+        if (rating === 1) current.againCount += 1;
+        if (rating === 2) current.hardCount += 1;
+        recentRatingsByCard.set(cardId, current);
+      }
+    });
+  }
+
+  // Filter cards of target language that qualify as weak
+  const weakCandidates = cards.filter(card => {
+    if (targetLanguage && card.targetLanguage && card.targetLanguage !== targetLanguage) {
+      return false;
+    }
+    const logStats = recentRatingsByCard.get(card.id);
+    const hasRecentAgainOrHard = logStats ? (logStats.againCount > 0 || logStats.hardCount > 0) : false;
+    
+    return card.state === 'learning' || (card.lapses || 0) > 0 || hasRecentAgainOrHard;
+  });
+
+  // Calculate weakness score (higher = weaker)
+  const scored = weakCandidates.map(card => {
+    let score = 0;
+    if (card.state === 'learning') score += 10;
+    score += (card.lapses || 0) * 4;
+    score += Math.max(0, (2.5 - (card.easeFactor || 2.5)) * 4);
+
+    const logStats = recentRatingsByCard.get(card.id);
+    if (logStats) {
+      score += logStats.againCount * 5;
+      score += logStats.hardCount * 2;
+    }
+
+    return { card, score };
+  });
+
+  // Sort from weakest (highest score) to strongest
+  scored.sort((a, b) => b.score - a.score);
+
+  // Extract new_element, clean, lowercase, deduplicate
+  const words: string[] = [];
+  const seen = new Set<string>();
+
+  for (const { card } of scored) {
+    const rawWord = card.sentence?.new_element?.trim().toLowerCase();
+    if (rawWord && !seen.has(rawWord) && rawWord.length >= 2) {
+      seen.add(rawWord);
+      words.push(rawWord);
+    }
+  }
+
+  return words;
 };

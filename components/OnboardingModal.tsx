@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { User, Globe, Compass, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
 import { UILanguage } from '../types';
-import { NATIVE_LANGUAGES, TARGET_LANGUAGES, UI_LANGUAGE_TO_NATIVE_NAME } from '../utils/starterVocab';
+import { NATIVE_LANGUAGES, TARGET_LANGUAGES, UI_LANGUAGE_TO_NATIVE_NAME, isExperimentalLanguage } from '../utils/starterVocab';
+import translations from '../locales';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -241,6 +242,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
               {t.targetHint}
             </p>
+            {isExperimentalLanguage(selectedTargetLang) && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/40">
+                ⚠️ {translations[selectedUiLang]?.onboardingExperimentalWarning || translations.en.onboardingExperimentalWarning}
+              </p>
+            )}
           </div>
 
           {/* Action button */}
