@@ -285,7 +285,19 @@ const de = {
   "onboardingExperimentalWarning": "Experimentelle Sprache: Akzentuierung, IPA-Transkriptionen und rekonstruierte Aussprache können Ungenauigkeiten enthalten.",
   "annotationsFailedNotice": "Grammatikalische und phonetische Anmerkungen konnten nicht geladen werden.",
   "reannotateBtn": "Erneut annotieren",
-  "reannotating": "Wird annotiert..."
+  "reannotating": "Wird annotiert...",
+  "srsAutoPlayAudio": "Automatische Audio-Wiedergabe (TTS)",
+  "srsAutoPlayAudioDesc": "Liest den Satz automatisch mit der Browser-Sprachsynthese vor, wenn jede Anki-Karte erscheint. Die manuelle Taste verwendet natürliche KI-Stimme.",
+  "srsAutoPlayOnTip": "Automatische Audio-Wiedergabe aktiviert (klicken zum Stummschalten)",
+  "srsAutoPlayOffTip": "Automatische Audio-Wiedergabe deaktiviert (klicken zum Aktivieren)",
+  "srsPlayNaturalVoice": "Mit natürlicher KI-Stimme anhören",
+  "srsPlayBrowserVoice": "Aussprache anhören",
+  "srsNaturalVoiceTag": "Natürliche Stimme",
+  "srsNaturalVoiceBadge": "KI-Stimme...",
+  "srsGeneratingVoice": "Audio wird generiert...",
+  "srsAutoAudioBadge": "Auto-Audio",
+  "srsAutoOn": "Auto",
+  "srsAutoOff": "Stumm"
 } as const;
 
 export default de;

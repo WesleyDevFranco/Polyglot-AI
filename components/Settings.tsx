@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, CEFRLevel, UILanguage, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from '../types';
-import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles, Search, Target, Key, Eye, EyeOff, HelpCircle, FileJson, CheckCircle2, ShieldCheck, X, Layers } from 'lucide-react';
+import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles, Search, Target, Key, Eye, EyeOff, HelpCircle, FileJson, CheckCircle2, ShieldCheck, X, Layers, Volume2 } from 'lucide-react';
 import { VocabularyExplorer } from './VocabularyExplorer';
 import { ApiKeyTutorialModal } from './ApiKeyTutorialModal';
 import { JsonBackupTutorialModal } from './JsonBackupTutorialModal';
@@ -502,6 +502,26 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 </div>
               </button>
             </div>
+          </div>
+
+          {/* SRS Auto Play Audio Toggle */}
+          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+            <div className="space-y-0.5 pr-4">
+              <p className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Volume2 size={16} className="text-indigo-600 dark:text-indigo-400" />
+                {t.srsAutoPlayAudio || "Áudio Automático nos Cards (TTS)"}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                {t.srsAutoPlayAudioDesc || "Reproduz a frase automaticamente com o sintetizador do navegador ao exibir cada card no Anki. No botão manual, usa a voz natural de IA."}
+              </p>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setFormData({ ...formData, srsAutoPlayAudio: !(formData.srsAutoPlayAudio ?? true) })}
+              className={`w-12 h-6 rounded-full transition-all relative shrink-0 cursor-pointer ${(formData.srsAutoPlayAudio ?? true) ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+            >
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${(formData.srsAutoPlayAudio ?? true) ? 'left-7' : 'left-1'}`} />
+            </button>
           </div>
         </div>
 

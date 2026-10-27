@@ -39,7 +39,8 @@ const DEFAULT_PROFILE: UserProfile = {
   shakespeareanFocus: 'general',
   dailyGoal: 2,
   srsBackType: 'full_translation',
-  srsDailyGoal: 20
+  srsDailyGoal: 20,
+  srsAutoPlayAudio: true
 };
 
 const calculateLevelFromVocab = (count: number): CEFRLevel => {
@@ -766,6 +767,9 @@ const App: React.FC = () => {
             dailyNewCardsLimit={profile.dailyNewCardsLimit ?? 0}
             reviewLogs={srsReviewLogs}
             onLogReview={handleLogReview}
+            autoPlayAudio={profile.srsAutoPlayAudio ?? true}
+            onToggleAutoPlayAudio={(enabled) => setProfile(prev => ({ ...prev, srsAutoPlayAudio: enabled }))}
+            apiKey={profile.apiKey}
             onNavigateToStudy={() => {
               setActiveTab('study');
               handleGenerateStory();

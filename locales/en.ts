@@ -285,7 +285,19 @@ const en = {
   "onboardingExperimentalWarning": "Experimental language: accents, IPA transcriptions, and reconstructed pronunciation may contain inaccuracies.",
   "annotationsFailedNotice": "Could not load grammatical and phonetic annotations.",
   "reannotateBtn": "Annotate again",
-  "reannotating": "Annotating..."
+  "reannotating": "Annotating...",
+  "srsAutoPlayAudio": "Automatic Audio (TTS)",
+  "srsAutoPlayAudioDesc": "Automatically speaks the sentence using the browser speech synthesizer when each Anki card appears. The manual button uses natural AI voice.",
+  "srsAutoPlayOnTip": "Automatic audio enabled (click to mute)",
+  "srsAutoPlayOffTip": "Automatic audio disabled (click to enable)",
+  "srsPlayNaturalVoice": "Listen with natural AI voice",
+  "srsPlayBrowserVoice": "Listen to pronunciation",
+  "srsNaturalVoiceTag": "Natural Voice",
+  "srsNaturalVoiceBadge": "AI Voice...",
+  "srsGeneratingVoice": "Generating audio...",
+  "srsAutoAudioBadge": "Auto Audio",
+  "srsAutoOn": "Auto",
+  "srsAutoOff": "Muted"
 } as const;
 
 export default en;

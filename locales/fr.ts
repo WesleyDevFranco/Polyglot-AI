@@ -285,7 +285,19 @@ const fr = {
   "onboardingExperimentalWarning": "Langue expérimentale : l'accentuation, les transcriptions API et la prononciation reconstituée peuvent comporter des inexactitudes.",
   "annotationsFailedNotice": "Impossible de charger les annotations grammaticales et phonétiques.",
   "reannotateBtn": "Annoter à nouveau",
-  "reannotating": "Annotation..."
+  "reannotating": "Annotation...",
+  "srsAutoPlayAudio": "Audio Automatique (TTS)",
+  "srsAutoPlayAudioDesc": "Lit automatiquement la phrase avec la synthèse vocale du navigateur lors de l'affichage de chaque carte Anki. Le bouton manuel utilise la voix naturelle de l'IA.",
+  "srsAutoPlayOnTip": "Audio automatique activé (cliquer pour couper)",
+  "srsAutoPlayOffTip": "Audio automatique désactivé (cliquer pour activer)",
+  "srsPlayNaturalVoice": "Écouter avec voix naturelle (IA)",
+  "srsPlayBrowserVoice": "Écouter la prononciation",
+  "srsNaturalVoiceTag": "Voix Naturelle",
+  "srsNaturalVoiceBadge": "Voix IA...",
+  "srsGeneratingVoice": "Génération audio...",
+  "srsAutoAudioBadge": "Audio Auto",
+  "srsAutoOn": "Auto",
+  "srsAutoOff": "Muet"
 } as const;
 
 export default fr;

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Layers, 
   Volume2, 
+  VolumeX,
+  Loader2,
   RotateCw, 
   Sparkles, 
   CheckCircle2, 
@@ -23,6 +25,7 @@ import {
   Clock,
   X
 } from 'lucide-react';
+import { GoogleGenAI, Modality } from '@google/genai';
 import { SRSCard, SRSCardRating, SRSBackType, Sentence, StoryResponse, SRSReviewLogEntry } from '../types';
 import { 
   calculateNextInterval, 
@@ -46,12 +49,50 @@ interface SRSReviewAreaProps {
   dailyNewCardsLimit?: number;
   reviewLogs?: SRSReviewLogEntry[];
   onLogReview?: (entry: SRSReviewLogEntry) => void;
+  autoPlayAudio?: boolean;
+  onToggleAutoPlayAudio?: (enabled: boolean) => void;
+  apiKey?: string;
   t: any;
 }
 
+function decodeBase64(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, data.byteLength / 2);
+  const buffer = ctx.createBuffer(1, dataInt16.length, sampleRate);
+  const channelData = buffer.getChannelData(0);
+  for (let i = 0; i < dataInt16.length; i++) {
+    channelData[i] = dataInt16[i] / 32768.0;
+  }
+  return buffer;
+}
+
+let activeAudioSource: AudioBufferSourceNode | null = null;
+
+const stopAllAudio = () => {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  if (activeAudioSource) {
+    try {
+      activeAudioSource.stop();
+    } catch {
+      // ignore if already stopped
+    }
+    activeAudioSource = null;
+  }
+};
+
 const speakText = (text: string, lang: string) => {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
+  stopAllAudio();
   const utterance = new SpeechSynthesisUtterance(text);
   const langMap: Record<string, string> = {
     'English': 'en-US',
@@ -69,8 +110,40 @@ const speakText = (text: string, lang: string) => {
     'Ancient Greek': 'el-GR'
   };
   utterance.lang = langMap[lang] || 'en-US';
-  utterance.rate = 0.9;
+  utterance.rate = 0.95;
   window.speechSynthesis.speak(utterance);
+};
+
+const playNaturalSentenceAudio = async (text: string, apiKey: string) => {
+  stopAllAudio();
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: "gemini-3.8-flash-lite-tts",
+    contents: [{ parts: [{ text: text.trim() }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+      },
+    },
+  });
+
+  const base64Data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+  if (!base64Data) throw new Error("No audio data returned");
+
+  const audioBytes = decodeBase64(base64Data);
+  const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+  const audioCtx = new AudioContextClass({ sampleRate: 24000 });
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  const buffer = await decodeAudioData(audioBytes, audioCtx, 24000);
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioCtx.destination);
+  activeAudioSource = source;
+  source.onended = () => {
+    if (activeAudioSource === source) activeAudioSource = null;
+  };
+  source.start();
 };
 
 export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
@@ -85,6 +158,9 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
   dailyNewCardsLimit = 0,
   reviewLogs,
   onLogReview,
+  autoPlayAudio,
+  onToggleAutoPlayAudio,
+  apiKey,
   t
 }) => {
   const [sessionActive, setSessionActive] = useState(false);
@@ -99,6 +175,30 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
   const [showConfigDropdown, setShowConfigDropdown] = useState(false);
   const [showForgettingCurveInfo, setShowForgettingCurveInfo] = useState(false);
   const [showExtraDetails, setShowExtraDetails] = useState(false);
+  const [isPlayingNaturalVoice, setIsPlayingNaturalVoice] = useState(false);
+
+  const [localAutoPlay, setLocalAutoPlay] = useState<boolean>(() => {
+    if (autoPlayAudio !== undefined) return autoPlayAudio;
+    try {
+      const saved = localStorage.getItem('srs_auto_play_tts');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const effectiveAutoPlay = autoPlayAudio !== undefined ? autoPlayAudio : localAutoPlay;
+
+  const handleToggleAutoPlay = (newVal: boolean) => {
+    setLocalAutoPlay(newVal);
+    try {
+      localStorage.setItem('srs_auto_play_tts', String(newVal));
+    } catch {}
+    onToggleAutoPlayAudio?.(newVal);
+    if (!newVal) {
+      stopAllAudio();
+    }
+  };
 
   // Filter cards by target language
   const languageCards = useMemo(() => {
@@ -147,6 +247,7 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
     }
 
     if (queue.length > 0) {
+      stopAllAudio();
       setReviewQueue(queue);
       setCurrentIndex(0);
       setIsFlipped(false);
@@ -159,9 +260,52 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
 
   const currentCard = reviewQueue[currentIndex] || null;
 
+  // Auto-play simple browser TTS when review card appears
+  useEffect(() => {
+    if (!sessionActive || !currentCard || !currentCard.sentence?.original) return;
+    if (!effectiveAutoPlay) return;
+
+    stopAllAudio();
+
+    // Short 150ms delay to let the card render before browser speech begins
+    const timer = setTimeout(() => {
+      speakText(currentCard.sentence.original, targetLanguage);
+    }, 150);
+
+    return () => {
+      clearTimeout(timer);
+      stopAllAudio();
+    };
+  }, [sessionActive, currentIndex, currentCard?.id, effectiveAutoPlay, targetLanguage]);
+
+  // Active manual playback: uses natural AI voice if apiKey is available, otherwise browser TTS fallback
+  const handlePlayActiveAudio = async () => {
+    if (!currentCard || !currentCard.sentence?.original) return;
+    if (isPlayingNaturalVoice) return;
+
+    stopAllAudio();
+
+    const trimmedKey = apiKey?.trim();
+    if (trimmedKey) {
+      setIsPlayingNaturalVoice(true);
+      try {
+        await playNaturalSentenceAudio(currentCard.sentence.original, trimmedKey);
+      } catch (err) {
+        console.warn("[SRS TTS] Natural voice playback failed, falling back to browser speech synthesis:", err);
+        speakText(currentCard.sentence.original, targetLanguage);
+      } finally {
+        setIsPlayingNaturalVoice(false);
+      }
+    } else {
+      speakText(currentCard.sentence.original, targetLanguage);
+    }
+  };
+
   // Handle rating submission
   const handleRate = useCallback((rating: SRSCardRating) => {
     if (!currentCard) return;
+
+    stopAllAudio();
 
     const now = Date.now();
     const prevInterval = currentCard.interval || 0;
@@ -383,6 +527,31 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
                   </button>
                 ))}
               </div>
+
+              {/* Quick Auto-TTS toggle inside dropdown */}
+              <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 px-1">
+                <button
+                  type="button"
+                  onClick={() => handleToggleAutoPlay(!effectiveAutoPlay)}
+                  className="w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 text-xs font-bold text-slate-700 dark:text-slate-300"
+                >
+                  <div className="flex items-center gap-2">
+                    {effectiveAutoPlay ? (
+                      <Volume2 size={16} className="text-emerald-500" />
+                    ) : (
+                      <VolumeX size={16} className="text-slate-400" />
+                    )}
+                    <span>{t.srsAutoPlayAudio || "Áudio Automático (TTS)"}</span>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    effectiveAutoPlay 
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {effectiveAutoPlay ? (t.srsAutoOn || "Ativado") : (t.srsAutoOff || "Desativado")}
+                  </span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -412,6 +581,7 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      stopAllAudio();
                       setSessionActive(false);
                       setIsFlipped(false);
                       setShowPhonetic(false);
@@ -449,20 +619,64 @@ export const SRSReviewArea: React.FC<SRSReviewAreaProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {/* Quick Auto-TTS Toggle */}
                       <button
                         type="button"
-                        onClick={() => speakText(currentCard.sentence.original, targetLanguage)}
-                        title="Ouvir pronúncia"
-                        className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-xl transition-all cursor-pointer"
+                        onClick={() => handleToggleAutoPlay(!effectiveAutoPlay)}
+                        title={effectiveAutoPlay ? (t.srsAutoPlayOnTip || "Áudio automático ativado (clique para silenciar)") : (t.srsAutoPlayOffTip || "Áudio automático desativado (clique para ativar)")}
+                        className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer font-medium ${
+                          effectiveAutoPlay
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
                       >
-                        <Volume2 size={20} />
+                        {effectiveAutoPlay ? (
+                          <Volume2 size={15} className="text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <VolumeX size={15} />
+                        )}
+                        <span className="text-[11px] font-bold">
+                          {effectiveAutoPlay ? (t.srsAutoOn || 'Auto') : (t.srsAutoOff || 'Mudo')}
+                        </span>
+                      </button>
+
+                      {/* Active Audio Play Button: Natural AI Voice (with Browser TTS fallback) */}
+                      <button
+                        type="button"
+                        onClick={handlePlayActiveAudio}
+                        disabled={isPlayingNaturalVoice}
+                        title={apiKey ? (t.srsPlayNaturalVoice || "Ouvir com voz natural (IA)") : (t.srsPlayBrowserVoice || "Ouvir pronúncia")}
+                        className="p-1.5 sm:px-2.5 sm:py-1.5 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-100 dark:border-indigo-900/40 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold disabled:opacity-75"
+                      >
+                        {isPlayingNaturalVoice ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin text-indigo-600 dark:text-indigo-400" />
+                            <span className="hidden sm:inline text-[11px] font-bold">
+                              {t.srsNaturalVoiceBadge || "Voz IA..."}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 size={16} />
+                            {apiKey ? (
+                              <span className="hidden sm:inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-200/80 dark:bg-indigo-900/80 text-indigo-800 dark:text-indigo-200">
+                                <Sparkles size={10} className="text-indigo-500" />
+                                {t.srsNaturalVoiceTag || "Voz Natural"}
+                              </span>
+                            ) : (
+                              <span className="hidden sm:inline text-[11px]">
+                                {t.srsPlayBrowserVoice || "Ouvir"}
+                              </span>
+                            )}
+                          </>
+                        )}
                       </button>
 
                       {currentCard.sentence.phonetic && (
                         <button
                           type="button"
                           onClick={() => setShowPhonetic(!showPhonetic)}
-                          className={`text-xs px-2.5 py-1 rounded-xl transition-all font-mono font-medium cursor-pointer ${
+                          className={`text-xs px-2.5 py-1.5 rounded-xl transition-all font-mono font-medium cursor-pointer ${
                             showPhonetic
                               ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'

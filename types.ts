@@ -54,6 +54,7 @@ export interface UserProfile {
   srsBackType?: SRSBackType;
   srsDailyGoal?: number;
   dailyNewCardsLimit?: number; // default 0; 0 = no limit
+  srsAutoPlayAudio?: boolean; // default true: automatic browser TTS when review card appears
 }
 
 export interface HistoryItem extends StoryResponse {
