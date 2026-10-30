@@ -297,7 +297,18 @@ const en = {
   "srsGeneratingVoice": "Generating audio...",
   "srsAutoAudioBadge": "Auto Audio",
   "srsAutoOn": "Auto",
-  "srsAutoOff": "Muted"
+  "srsAutoOff": "Muted",
+  "noveltyDensityTitle": "New Word Density (i+1)",
+  "noveltyDensityDesc": "Control how many sentences introduce a new vocabulary element.",
+  "noveltyHigh": "High",
+  "noveltyHighDesc": "One new word per sentence (100% of sentences)",
+  "noveltyNormal": "Normal",
+  "noveltyNormalDesc": "About 70% of sentences have a new word; the rest reinforce known words",
+  "noveltyLow": "Low",
+  "noveltyLowDesc": "About 40% of sentences have a new word (relaxed, extensive reading)",
+  "noveltyHighTag": "1 new word / sentence",
+  "noveltyNormalTag": "~70% sentences",
+  "noveltyLowTag": "~40% sentences"
 } as const;
 
 export default en;

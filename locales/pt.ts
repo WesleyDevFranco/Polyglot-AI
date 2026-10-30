@@ -297,7 +297,18 @@ const pt = {
   "srsGeneratingVoice": "Gerando áudio...",
   "srsAutoAudioBadge": "Auto Áudio",
   "srsAutoOn": "Auto",
-  "srsAutoOff": "Mudo"
+  "srsAutoOff": "Mudo",
+  "noveltyDensityTitle": "Densidade de Novidades (i+1)",
+  "noveltyDensityDesc": "Controla a frequência com que novas palavras são introduzidas nas frases.",
+  "noveltyHigh": "Alta",
+  "noveltyHighDesc": "Uma palavra nova por frase (100% das frases)",
+  "noveltyNormal": "Normal",
+  "noveltyNormalDesc": "Cerca de 70% das frases têm uma palavra nova; as demais consolidam o vocabulário",
+  "noveltyLow": "Baixa",
+  "noveltyLowDesc": "Cerca de 40% das frases têm uma palavra nova (leitura mais fluida e relaxada)",
+  "noveltyHighTag": "1 nova / frase",
+  "noveltyNormalTag": "~70% das frases",
+  "noveltyLowTag": "~40% das frases"
 } as const;
 
 export default pt;

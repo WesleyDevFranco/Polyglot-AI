@@ -297,7 +297,18 @@ const de = {
   "srsGeneratingVoice": "Audio wird generiert...",
   "srsAutoAudioBadge": "Auto-Audio",
   "srsAutoOn": "Auto",
-  "srsAutoOff": "Stumm"
+  "srsAutoOff": "Stumm",
+  "noveltyDensityTitle": "Neuheitsdichte (i+1)",
+  "noveltyDensityDesc": "Steuert, wie oft neue Wörter in Sätzen eingeführt werden.",
+  "noveltyHigh": "Hoch",
+  "noveltyHighDesc": "Ein neues Wort pro Satz (100% der Sätze)",
+  "noveltyNormal": "Normal",
+  "noveltyNormalDesc": "Etwa 70% der Sätze haben ein neues Wort; der Rest festigt das Vokabular",
+  "noveltyLow": "Niedrig",
+  "noveltyLowDesc": "Etwa 40% der Sätze haben ein neues Wort (entspanntes, flüssiges Lesen)",
+  "noveltyHighTag": "1 neu / Satz",
+  "noveltyNormalTag": "~70% der Sätze",
+  "noveltyLowTag": "~40% der Sätze"
 } as const;
 
 export default de;
