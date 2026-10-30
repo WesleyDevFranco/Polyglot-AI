@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { UserProfile, CEFRLevel, UILanguage, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from '../types';
+import { UserProfile, CEFRLevel, UILanguage, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus, NoveltyDensity } from '../types';
 import { User, Globe, GraduationCap, Save, Bell, Moon, Languages, Info, Download, Upload, Database, BookOpen, ScrollText, BrainCircuit, Feather, Sparkles, Search, Target, Key, Eye, EyeOff, HelpCircle, FileJson, CheckCircle2, ShieldCheck, X, Layers, Volume2 } from 'lucide-react';
 import { VocabularyExplorer } from './VocabularyExplorer';
 import { ApiKeyTutorialModal } from './ApiKeyTutorialModal';
@@ -146,6 +146,97 @@ const Settings: React.FC<SettingsProps> = ({ profile, setProfile, onExport, onIm
                 <option value="medium">{t.medium}</option>
                 <option value="long">{t.long}</option>
               </select>
+            </div>
+          </div>
+
+          {/* New Word Density (i+1) */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <Layers size={16} className="text-indigo-600 dark:text-indigo-400" />
+                <span>{t.noveltyDensityTitle || "New Word Density (i+1)"}</span>
+              </label>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                {(formData.noveltyDensity || 'high') === 'high'
+                  ? (t.noveltyHighTag || "1 new / sentence")
+                  : formData.noveltyDensity === 'normal'
+                  ? (t.noveltyNormalTag || "~70% sentences")
+                  : (t.noveltyLowTag || "~40% sentences")}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t.noveltyDensityDesc || "Control how many sentences introduce a new vocabulary element."}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* High */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, noveltyDensity: 'high' })}
+                className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  (formData.noveltyDensity || 'high') === 'high'
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-sm ring-1 ring-indigo-600'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between font-bold text-sm">
+                    <span>{t.noveltyHigh || "High"}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                      100%
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1.5 text-slate-500 dark:text-slate-400 leading-snug">
+                    {t.noveltyHighDesc || "One new word per sentence (100% of sentences)"}
+                  </p>
+                </div>
+              </button>
+
+              {/* Normal */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, noveltyDensity: 'normal' })}
+                className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  formData.noveltyDensity === 'normal'
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-sm ring-1 ring-indigo-600'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between font-bold text-sm">
+                    <span>{t.noveltyNormal || "Normal"}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      ~70%
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1.5 text-slate-500 dark:text-slate-400 leading-snug">
+                    {t.noveltyNormalDesc || "About 70% of sentences have a new word; the rest reinforce known words"}
+                  </p>
+                </div>
+              </button>
+
+              {/* Low */}
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, noveltyDensity: 'low' })}
+                className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  formData.noveltyDensity === 'low'
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-sm ring-1 ring-indigo-600'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between font-bold text-sm">
+                    <span>{t.noveltyLow || "Low"}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      ~40%
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1.5 text-slate-500 dark:text-slate-400 leading-snug">
+                    {t.noveltyLowDesc || "About 40% of sentences have a new word (relaxed, extensive reading)"}
+                  </p>
+                </div>
+              </button>
             </div>
           </div>
 

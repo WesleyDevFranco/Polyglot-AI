@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { CEFRLevel, StoryResponse, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus } from "../types";
+import { CEFRLevel, StoryResponse, StorySize, AncientGreekDialect, AncientGreekFocus, ShakespeareanFocus, NoveltyDensity } from "../types";
 import { resolveNativeLanguage } from "../utils/starterVocab";
 
 // ============================================================
@@ -21,6 +21,12 @@ export const PROMPT_VOCAB_LIMIT = 1000; // how many known words go into prompt
 export const COOLDOWN_DAILY_MS = 6 * 60 * 60 * 1000; // 6 hours for daily quota
 export const COOLDOWN_RATE_LIMIT_MS = 60 * 1000; // 60 seconds for standard rate limit
 export const MAX_INVALID_NEW_ELEMENT_RATIO = 0.3; // max 30% invalid new elements before regen
+export const MAX_HIGH_UNKNOWN_SENTENCE_RATIO = 0.3; // max 30% sentences with >=3 unknowns before full regen
+export const MAX_ZERO_NOVELTY_RATIO: Record<NoveltyDensity, number> = {
+  high: 0.3,
+  normal: 0.5,
+  low: 0.7
+};
 const quotaCooldowns = new Map<string, number>(); // in-memory: model name -> cooldown expiry timestamp
 const REQUEST_TIMEOUT_MS = 120000;   // long stories can take a while; a client abort does NOT cancel server-side quota usage
 
@@ -358,6 +364,25 @@ export const annotationsSchema = {
     }
   },
   required: ["annotations"]
+};
+
+export const enrichmentSchema = {
+  type: Type.OBJECT,
+  properties: {
+    sentences: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.NUMBER },
+          original: { type: Type.STRING },
+          translation: { type: Type.STRING }
+        },
+        required: ["id", "original", "translation"]
+      }
+    }
+  },
+  required: ["sentences"]
 };
 
 const buildStorySchema = (required: string[]) => ({
@@ -809,7 +834,8 @@ export const generateStory = async (
   ancientGreekFocus?: AncientGreekFocus,
   shakespeareanFocus?: ShakespeareanFocus,
   customApiKey?: string,
-  weakWords?: string[]
+  weakWords?: string[],
+  noveltyDensity: NoveltyDensity = 'high'
 ): Promise<StoryResponse> => {
   const apiKey = getApiKey(customApiKey);
   if (!apiKey) {
@@ -826,6 +852,13 @@ export const generateStory = async (
   const wordsDisplay = wordsForPrompt.length > 0 ? wordsForPrompt.join(", ") : "hello, world, is, the, in, to, and";
 
   const explicitLanguageInstruction = `The field 'translation' MUST be written in ${resolvedNative}. The field 'explanation' MUST be written in ${resolvedNative}. 'definition_target' MUST be written in ${targetLanguage}.`;
+
+  const densityRule =
+    noveltyDensity === 'low'
+      ? 'About 40% of the sentences MUST contain exactly one word NOT in the list; the others use only known words.'
+      : noveltyDensity === 'normal'
+        ? 'About 70% of the sentences MUST contain exactly one word NOT in the list; the others use only known words.'
+        : 'Every sentence MUST contain exactly ONE word that is NOT in the KNOWN WORDS list (a common, useful word for the level; never a proper name).';
 
   const prompt = `
     Act as a Natural Language Acquisition Specialist. 
@@ -844,7 +877,7 @@ export const generateStory = async (
     STORY GUIDELINES:
     1. Write simple, natural sentences in ${langDisplay}.
     2. The vast majority of words in each sentence MUST come from the KNOWN WORDS list.
-    3. Introduce at most ONE word outside the KNOWN WORDS list per sentence.
+    3. ${densityRule}
     4. Length: ${sentenceCount} sentences.
     5. List all character names, person names, and place names that appear in the story in 'proper_nouns' exactly as written in the text.
     6. For each sentence, provide 'id', 'original', and 'translation'.
@@ -863,25 +896,26 @@ export const generateStory = async (
   let analysis = analyzeStoryVocabulary(story, cleanWords);
   story = applyAnalysisToStory(story, analysis);
 
-  // Regeneration criteria: >30% sentences with >=3 unknowns, OR >50% sentences with 0 unknowns
-  const canValidate = cleanWords.length >= MIN_VOCAB_FOR_VALIDATION;
-  const shouldRegenerate = canValidate && (analysis.ratioWith3OrMore > 0.3 || analysis.ratioWith0 > 0.5);
+  const initialZeroRatio = analysis.ratioWith0;
+  let finalZeroRatio = initialZeroRatio;
+  let enrichmentOccurred = false;
 
-  if (shouldRegenerate) {
+  const canValidate = cleanWords.length >= MIN_VOCAB_FOR_VALIDATION;
+  const zeroNoveltyLimit = MAX_ZERO_NOVELTY_RATIO[noveltyDensity] ?? 0.3;
+  const hasExcessUnknowns = canValidate && analysis.ratioWith3OrMore > MAX_HIGH_UNKNOWN_SENTENCE_RATIO;
+  const lacksNovelty = canValidate && !hasExcessUnknowns && analysis.ratioWith0 > zeroNoveltyLimit;
+
+  // Full regeneration applies ONLY to excess unknown words (>=3 unknowns in >30% sentences)
+  if (hasExcessUnknowns) {
     console.warn(
-      `[Story Validation] Needs regeneration: ${(analysis.ratioWith3OrMore * 100).toFixed(1)}% sentences with >=3 unknowns, ` +
-      `${(analysis.ratioWith0 * 100).toFixed(1)}% sentences with 0 unknowns. Attempting 1 regeneration...`
+      `[Story Validation] Excess unknown words: ${(analysis.ratioWith3OrMore * 100).toFixed(1)}% sentences with >=3 unknowns ` +
+      `(limit ${MAX_HIGH_UNKNOWN_SENTENCE_RATIO * 100}%). Attempting 1 full regeneration...`
     );
     try {
-      let revisionNotes = `CRITICAL REVISION REQUIREMENT:\n`;
-      if (analysis.ratioWith3OrMore > 0.3) {
-        const top30 = analysis.uniqueUnknownWords.slice(0, 30);
-        revisionNotes += `AVOID these words, they are not in the known list: [${top30.join(', ')}].\n`;
-        revisionNotes += `Use ONLY words from the KNOWN WORDS list for 95% of each sentence, introducing at most 1 new word per sentence.\n`;
-      }
-      if (analysis.ratioWith0 > 0.5) {
-        revisionNotes += `The previous story lacked novelty. Introduce exactly one word that is NOT in the known list in each sentence.\n`;
-      }
+      const top30 = analysis.uniqueUnknownWords.slice(0, 30);
+      const revisionNotes = `CRITICAL REVISION REQUIREMENT:\n` +
+        `AVOID these words, they are not in the known list: [${top30.join(', ')}].\n` +
+        `Use ONLY words from the KNOWN WORDS list for 95% of each sentence, introducing at most 1 new word per sentence.\n`;
 
       const regenPrompt = `${prompt}\n\n${revisionNotes}\n${explicitLanguageInstruction}`;
       const { data: regenParsed, modelUsed: regenModel } = await callGeminiWithSchema(
@@ -893,18 +927,108 @@ export const generateStory = async (
       const regenAnalysis = analyzeStoryVocabulary(regenStory, cleanWords);
       regenStory = applyAnalysisToStory(regenStory, regenAnalysis);
 
-      // Keep version with fewest problematic sentences (sentences with >=3 unknowns + sentences with 0 unknowns)
+      // Keep version with fewest problematic sentences
       if (regenAnalysis.problematicCount < analysis.problematicCount) {
         story = regenStory;
         analysis = regenAnalysis;
         storyModelUsed = regenModel;
+        finalZeroRatio = analysis.ratioWith0;
       }
     } catch (e) {
-      console.warn("[Story Validation] Regeneration attempt failed, retaining original story:", e);
+      console.warn("[Story Validation] Full regeneration attempt failed, retaining original story:", e);
+    }
+  } else if (lacksNovelty) {
+    // Targeted enrichment: rewrite only zero-novelty sentences
+    console.warn(
+      `[Story Enrichment] Lacks novelty for mode '${noveltyDensity}': ${(analysis.ratioWith0 * 100).toFixed(1)}% sentences with 0 new elements ` +
+      `(limit ${(zeroNoveltyLimit * 100).toFixed(0)}%). Attempting targeted enrichment...`
+    );
+    try {
+      const zeroNoveltySentences = story.sentences
+        .filter(s => {
+          const sa = analysis.sentenceAnalyses.find(a => a.sentenceId === s.id);
+          return sa ? sa.unknownTokens.length === 0 : !s.new_element;
+        })
+        .map(s => ({ id: s.id, original: s.original, translation: s.translation }));
+
+      if (zeroNoveltySentences.length > 0) {
+        const usedNewWords = story.sentences
+          .map(s => s.new_element?.trim().toLowerCase())
+          .filter((w): w is string => Boolean(w && w.length > 0));
+
+        const enrichmentPrompt = `
+Act as a Natural Language Acquisition Specialist.
+Rewrite ONLY the sentences provided below to introduce new vocabulary, while preserving the story's meaning, tone, narrative flow, and continuity.
+
+Target Language: ${langDisplay}
+Native Language: ${resolvedNative}
+CEFR Level: ${level}
+
+KNOWN WORDS (${cleanWords.length} total words): [${wordsDisplay}]
+ALREADY INTRODUCED NEW WORDS IN STORY (DO NOT REUSE): [${Array.from(new Set(usedNewWords)).join(", ")}]
+
+SENTENCES TO ENRICH:
+${JSON.stringify(zeroNoveltySentences, null, 2)}
+
+REQUIREMENTS:
+1. Rewrite each given sentence so that it contains exactly ONE word that is NOT in the KNOWN WORDS list (and NOT in the already introduced words list, and NOT a proper name).
+2. All other words in each sentence MUST come strictly from the KNOWN WORDS list.
+3. Maintain the continuity, narrative coherence, and original intent of the story.
+4. Keep the same 'id' for each rewritten sentence.
+5. Provide 'original' and 'translation'.
+
+CRITICAL LANGUAGE REQUIREMENT:
+${explicitLanguageInstruction}
+`;
+
+        const { data: enrichData } = await callGeminiWithSchema(
+          apiKey,
+          enrichmentPrompt,
+          enrichmentSchema
+        );
+
+        const enrichedSentences = Array.isArray(enrichData?.sentences) ? enrichData.sentences : [];
+        if (enrichedSentences.length > 0) {
+          const enrichMap = new Map<number, { original: string; translation: string }>();
+          for (const es of enrichedSentences) {
+            if (typeof es?.id === 'number' && es.original) {
+              enrichMap.set(es.id, {
+                original: String(es.original).trim(),
+                translation: String(es.translation || '').trim()
+              });
+            }
+          }
+
+          const mergedSentences = story.sentences.map(s => {
+            const replacement = enrichMap.get(s.id);
+            if (replacement) {
+              return {
+                ...s,
+                original: replacement.original,
+                translation: replacement.translation || s.translation
+              };
+            }
+            return s;
+          });
+
+          const enrichedStoryCandidate: StoryResponse = {
+            ...story,
+            sentences: mergedSentences
+          };
+
+          const enrichedAnalysis = analyzeStoryVocabulary(enrichedStoryCandidate, cleanWords);
+          story = applyAnalysisToStory(enrichedStoryCandidate, enrichedAnalysis);
+          analysis = enrichedAnalysis;
+          finalZeroRatio = analysis.ratioWith0;
+          enrichmentOccurred = true;
+        }
+      }
+    } catch (e) {
+      console.warn("[Story Enrichment] Targeted enrichment attempt failed, retaining original story:", e);
     }
   }
 
-  if (canValidate && analysis.ratioWith3OrMore > 0.3) {
+  if (canValidate && analysis.ratioWith3OrMore > MAX_HIGH_UNKNOWN_SENTENCE_RATIO) {
     story.hasHighUnknownWords = true;
   } else {
     story.hasHighUnknownWords = false;
@@ -921,6 +1045,11 @@ export const generateStory = async (
     shakespeareanFocus
   );
   story = annotatedStory;
+
+  // Novelty density info log
+  console.info(
+    `[Story Novelty Density] Mode: ${noveltyDensity} | Zero-novelty ratio before: ${(initialZeroRatio * 100).toFixed(1)}%, after: ${(finalZeroRatio * 100).toFixed(1)}% | Enriched: ${enrichmentOccurred}`
+  );
 
   // Single Requirement 10 log per story
   console.info(

@@ -12,8 +12,8 @@ import {
   getCardButtonIntervals,
   getWeakWords
 } from './srs';
-import { tokenize, analyzeSentenceTokens, analyzeStoryVocabulary, extractSentenceProperNouns } from '../services/geminiService';
-import { SRSCard, SRSReviewLogEntry, StoryResponse } from '../types';
+import { tokenize, analyzeSentenceTokens, analyzeStoryVocabulary, extractSentenceProperNouns, MAX_ZERO_NOVELTY_RATIO, MAX_HIGH_UNKNOWN_SENTENCE_RATIO } from '../services/geminiService';
+import { SRSCard, SRSReviewLogEntry, StoryResponse, NoveltyDensity } from '../types';
 
 const createMockCard = (overrides: Partial<SRSCard> = {}): SRSCard => ({
   id: 'card_1',
@@ -413,6 +413,49 @@ describe('SRS SM-2 Algorithm Tests', () => {
       expect(analysis.problematicCount).toBe(2);
       expect(analysis.ratioWith3OrMore).toBeCloseTo(1 / 3, 2);
       expect(analysis.ratioWith0).toBeCloseTo(1 / 3, 2);
+    });
+
+    describe('Novelty Density Mode Limits (MAX_ZERO_NOVELTY_RATIO)', () => {
+      it('has expected threshold values per mode', () => {
+        expect(MAX_ZERO_NOVELTY_RATIO.high).toBe(0.3);
+        expect(MAX_ZERO_NOVELTY_RATIO.normal).toBe(0.5);
+        expect(MAX_ZERO_NOVELTY_RATIO.low).toBe(0.7);
+        expect(MAX_HIGH_UNKNOWN_SENTENCE_RATIO).toBe(0.3);
+      });
+
+      it('correctly evaluates when zero-novelty threshold is exceeded for different modes', () => {
+        const checkNeedsEnrichment = (ratioWith0: number, density: NoveltyDensity): boolean => {
+          return ratioWith0 > MAX_ZERO_NOVELTY_RATIO[density];
+        };
+
+        // Ratio of 0.45 zero-novelty sentences:
+        // - In 'high' (limit 0.3): 0.45 > 0.3 -> needs enrichment
+        expect(checkNeedsEnrichment(0.45, 'high')).toBe(true);
+        // - In 'normal' (limit 0.5): 0.45 <= 0.5 -> ok
+        expect(checkNeedsEnrichment(0.45, 'normal')).toBe(false);
+        // - In 'low' (limit 0.7): 0.45 <= 0.7 -> ok
+        expect(checkNeedsEnrichment(0.45, 'low')).toBe(false);
+
+        // Ratio of 0.60 zero-novelty sentences:
+        // - In 'high' (0.3): needs enrichment
+        expect(checkNeedsEnrichment(0.60, 'high')).toBe(true);
+        // - In 'normal' (0.5): 0.60 > 0.5 -> needs enrichment
+        expect(checkNeedsEnrichment(0.60, 'normal')).toBe(true);
+        // - In 'low' (0.7): 0.60 <= 0.7 -> ok
+        expect(checkNeedsEnrichment(0.60, 'low')).toBe(false);
+
+        // Ratio of 0.80 zero-novelty sentences:
+        // - In all modes: exceeds limit
+        expect(checkNeedsEnrichment(0.80, 'high')).toBe(true);
+        expect(checkNeedsEnrichment(0.80, 'normal')).toBe(true);
+        expect(checkNeedsEnrichment(0.80, 'low')).toBe(true);
+
+        // Ratio of 0.20 zero-novelty sentences:
+        // - Within bounds for all modes
+        expect(checkNeedsEnrichment(0.20, 'high')).toBe(false);
+        expect(checkNeedsEnrichment(0.20, 'normal')).toBe(false);
+        expect(checkNeedsEnrichment(0.20, 'low')).toBe(false);
+      });
     });
   });
 

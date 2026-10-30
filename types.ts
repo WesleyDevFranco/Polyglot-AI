@@ -5,6 +5,7 @@ export type StorySize = 'short' | 'standard' | 'medium' | 'long';
 export type AncientGreekDialect = 'attic' | 'koine';
 export type AncientGreekFocus = 'general' | 'philosophical';
 export type ShakespeareanFocus = 'general' | 'drama' | 'courtly';
+export type NoveltyDensity = 'low' | 'normal' | 'high';
 
 export interface Sentence {
   id: number;
@@ -55,6 +56,7 @@ export interface UserProfile {
   srsDailyGoal?: number;
   dailyNewCardsLimit?: number; // default 0; 0 = no limit
   srsAutoPlayAudio?: boolean; // default true: automatic browser TTS when review card appears
+  noveltyDensity?: NoveltyDensity; // 'high' (1/sentence), 'normal' (~70%), 'low' (~40%)
 }
 
 export interface HistoryItem extends StoryResponse {

@@ -305,7 +305,18 @@ const it = {
   "onboardingLevelA1Desc": "Base — conosce alcune parole comuni",
   "onboardingLevelA2Desc": "Elementare — riesce a gestire argomenti semplici",
   "onboardingLevelB1Desc": "Intermedio — può seguire conversazioni quotidiane",
-  "onboardingLevelB2Desc": "Intermedio-avanzato — a proprio agio con la maggior parte degli argomenti"
+  "onboardingLevelB2Desc": "Intermedio-avanzato — a proprio agio con la maggior parte degli argomenti",
+  "noveltyDensityTitle": "Densità di Novità (i+1)",
+  "noveltyDensityDesc": "Controlla la frequenza con cui nuove parole vengono introdotte nelle frasi.",
+  "noveltyHigh": "Alta",
+  "noveltyHighDesc": "Una nuova parola per frase (100% delle frasi)",
+  "noveltyNormal": "Normale",
+  "noveltyNormalDesc": "Circa il 70% delle frasi ha una nuova parola; il resto consolida il vocabolario",
+  "noveltyLow": "Bassa",
+  "noveltyLowDesc": "Circa il 40% delle frasi ha una nuova parola (ritmo di lettura rilassato e scorrevole)",
+  "noveltyHighTag": "1 nuova / frase",
+  "noveltyNormalTag": "~70% delle frasi",
+  "noveltyLowTag": "~40% delle frasi"
 } as const;
 
 export default it;

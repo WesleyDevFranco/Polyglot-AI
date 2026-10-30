@@ -305,7 +305,18 @@ const en = {
   "onboardingLevelA1Desc": "Basic — know a few common words",
   "onboardingLevelA2Desc": "Elementary — can handle simple topics",
   "onboardingLevelB1Desc": "Intermediate — can follow everyday conversations",
-  "onboardingLevelB2Desc": "Upper-Intermediate — comfortable with most topics"
+  "onboardingLevelB2Desc": "Upper-Intermediate — comfortable with most topics",
+  "noveltyDensityTitle": "New Word Density (i+1)",
+  "noveltyDensityDesc": "Control how many sentences introduce a new vocabulary element.",
+  "noveltyHigh": "High",
+  "noveltyHighDesc": "One new word per sentence (100% of sentences)",
+  "noveltyNormal": "Normal",
+  "noveltyNormalDesc": "About 70% of sentences have a new word; the rest reinforce known words",
+  "noveltyLow": "Low",
+  "noveltyLowDesc": "About 40% of sentences have a new word (relaxed, extensive reading)",
+  "noveltyHighTag": "1 new word / sentence",
+  "noveltyNormalTag": "~70% sentences",
+  "noveltyLowTag": "~40% sentences"
 } as const;
 
 export default en;
