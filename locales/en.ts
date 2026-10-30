@@ -297,7 +297,15 @@ const en = {
   "srsGeneratingVoice": "Generating audio...",
   "srsAutoAudioBadge": "Auto Audio",
   "srsAutoOn": "Auto",
-  "srsAutoOff": "Muted"
+  "srsAutoOff": "Muted",
+  "onboardingEnglishLevelLabel": "Your Current English Level",
+  "onboardingLoadingVocab": "Preparing your vocabulary…",
+  "onboardingLevelRequired": "Please select your level to continue.",
+  "onboardingLevelPreA1Desc": "Complete beginner — starting from scratch",
+  "onboardingLevelA1Desc": "Basic — know a few common words",
+  "onboardingLevelA2Desc": "Elementary — can handle simple topics",
+  "onboardingLevelB1Desc": "Intermediate — can follow everyday conversations",
+  "onboardingLevelB2Desc": "Upper-Intermediate — comfortable with most topics"
 } as const;
 
 export default en;

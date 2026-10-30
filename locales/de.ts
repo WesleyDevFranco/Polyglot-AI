@@ -297,7 +297,15 @@ const de = {
   "srsGeneratingVoice": "Audio wird generiert...",
   "srsAutoAudioBadge": "Auto-Audio",
   "srsAutoOn": "Auto",
-  "srsAutoOff": "Stumm"
+  "srsAutoOff": "Stumm",
+  "onboardingEnglishLevelLabel": "Dein aktuelles Englischniveau",
+  "onboardingLoadingVocab": "Vokabular wird vorbereitet…",
+  "onboardingLevelRequired": "Bitte wähle dein Niveau aus.",
+  "onboardingLevelPreA1Desc": "Kompletter Anfänger — von vorne anfangen",
+  "onboardingLevelA1Desc": "Grundkenntnisse — kennt einige häufige Wörter",
+  "onboardingLevelA2Desc": "Grundlegend — kann einfache Themen bewältigen",
+  "onboardingLevelB1Desc": "Mittelstufe — kann alltäglichen Gesprächen folgen",
+  "onboardingLevelB2Desc": "Obere Mittelstufe — mit den meisten Themen vertraut"
 } as const;
 
 export default de;
